@@ -2,17 +2,11 @@
   "hosting": [
     {
       "target": "bynote",
-      "public": "out",
+      "source": ".",
       "ignore": [
         "firebase.json",
         "**/.*",
         "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
       ]
     }
   ]

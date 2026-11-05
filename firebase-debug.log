@@ -1,0 +1,134 @@
+[debug] [2026-11-05T05:26:00.732Z] ----------------------------------------------------------------------
+[debug] [2026-11-05T05:26:00.739Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Shan\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting:bynote --project ai-notez
+[debug] [2026-11-05T05:26:00.739Z] CLI Version:   15.34.1
+[debug] [2026-11-05T05:26:00.740Z] Platform:      win32
+[debug] [2026-11-05T05:26:00.740Z] Node Version:  v24.21.0
+[debug] [2026-11-05T05:26:00.740Z] Detected Agent: antigravity
+[debug] [2026-11-05T05:26:00.741Z] Time:          Thu Nov 05 2026 10:26:00 GMT+0500 (Pakistan Standard Time)
+[debug] [2026-11-05T05:26:00.743Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-11-05T05:26:07.282Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-11-05T05:26:07.283Z] > authorizing via signed-in user (zeeshanftatfa@gmail.com)
+[debug] [2026-11-05T05:26:07.284Z] [iam] checking project ai-notez for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-11-05T05:26:07.326Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:07.327Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:07.333Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/ai-notez:testIamPermissions [none]
+[debug] [2026-11-05T05:26:07.334Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/ai-notez:testIamPermissions  x-goog-user-project=ai-notez
+[debug] [2026-11-05T05:26:07.334Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ai-notez:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-11-05T05:26:09.000Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/ai-notez:testIamPermissions 200
+[debug] [2026-11-05T05:26:09.000Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ai-notez:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-11-05T05:26:09.006Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:09.006Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:09.007Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/ai-notez [none]
+[debug] [2026-11-05T05:26:09.593Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/ai-notez 200
+[debug] [2026-11-05T05:26:09.594Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/ai-notez {"projectId":"ai-notez","projectNumber":"275128405663","displayName":"NoteZ","name":"projects/ai-notez","resources":{"hostingSite":"ai-notez","realtimeDatabaseInstance":"ai-notez-default-rtdb"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_af463525-1c55-466f-910c-32c61fe52f3a"}
+[debug] [2026-11-05T05:26:19.979Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:19.979Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:19.979Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ai-notez/sites pageToken=&pageSize=10
+[debug] [2026-11-05T05:26:22.275Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ai-notez/sites 200
+[debug] [2026-11-05T05:26:22.276Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ai-notez/sites {"sites":[{"name":"projects/ai-notez/sites/ai-notez","defaultUrl":"https://ai-notez.web.app","type":"DEFAULT_SITE"},{"name":"projects/ai-notez/sites/bynote","defaultUrl":"https://bynote.web.app","appId":"1:275128405663:web:ee5864b447e839c2b35caa","type":"USER_SITE"},{"name":"projects/ai-notez/sites/zeeai","defaultUrl":"https://zeeai.web.app","type":"USER_SITE"}]}
+[debug] [2026-11-05T05:26:22.276Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:22.277Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:22.278Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:275128405663:web:ee5864b447e839c2b35caa/config [none]
+[debug] [2026-11-05T05:26:23.141Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:275128405663:web:ee5864b447e839c2b35caa/config 200
+[debug] [2026-11-05T05:26:23.141Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:275128405663:web:ee5864b447e839c2b35caa/config {"projectId":"ai-notez","appId":"1:275128405663:web:ee5864b447e839c2b35caa","databaseURL":"https://ai-notez-default-rtdb.firebaseio.com","storageBucket":"ai-notez.firebasestorage.app","apiKey":"AIzaSyDKPWj_3wOxhffuzMx5DQqln2d0WmH038A","authDomain":"ai-notez.firebaseapp.com","messagingSenderId":"275128405663","measurementId":"G-FFDFQ48X7K","projectNumber":"275128405663","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 16.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-11-05T05:26:46.731Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:46.732Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:26:46.732Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ai-notez/sites/ai-notez [none]
+[debug] [2026-11-05T05:26:48.341Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ai-notez/sites/ai-notez 200
+[debug] [2026-11-05T05:26:48.341Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ai-notez/sites/ai-notez {"name":"projects/ai-notez/sites/ai-notez","defaultUrl":"https://ai-notez.web.app","type":"DEFAULT_SITE"}
+[info] ▲ Next.js 16.2.6 (Turbopack)
+
+[info] - Environments: .env
+
+[info] 
+
+[info]   Creating an optimized production build ...
+
+[info] ✓ Compiled successfully in 18.9s
+
+[info]   Running TypeScript ...
+
+[info]   Finished TypeScript in 19.4s ...
+
+[info]   Collecting page data using 3 workers ...
+
+[info]   Generating static pages using 3 workers (0/2) ...
+
+[info] ✓ Generating static pages using 3 workers (2/2) in 408ms
+
+[info]   Finalizing page optimization ...
+
+[info] 
+
+[info] Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /api/assistant
+├ ƒ /api/assistant/[id]
+├ ƒ /api/assistant/threads/[threadId]
+├ ƒ /api/auth
+├ ƒ /api/documents
+├ ƒ /api/documents/[id]
+├ ƒ /api/documents/[id]/search
+├ ƒ /api/documents/[id]/versions
+├ ƒ /api/export
+├ ƒ /api/health
+├ ƒ /api/qdrant/reindex
+├ ƒ /api/qdrant/status
+├ ƒ /api/settings
+├ ƒ /api/settings/sessions
+├ ƒ /api/voice
+├ ƒ /api/voice/[id]
+├ ƒ /api/voice/[id]/chunks
+└ ƒ /api/voice/[id]/notes
+
+
+[info] 
+
+[info] ○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+[info] 
+
+[info] Building a Cloud Function to run this application. This is needed due to:
+[info]  • non-static component /api/assistant/[id]/route
+[info]  • non-static component /api/assistant/route
+[info]  • non-static component /api/assistant/threads/[threadId]/route
+[info]  • non-static component /api/auth/route
+[info]  • non-static component /api/documents/[id]/route
+[debug] [2026-11-05T05:27:43.330Z]  • non-static component /api/documents/[id]/search/route
+[debug] [2026-11-05T05:27:43.330Z]  • non-static component /api/documents/[id]/versions/route
+[debug] [2026-11-05T05:27:43.330Z]  • non-static component /api/documents/route
+[debug] [2026-11-05T05:27:43.330Z]  • non-static component /api/export/route
+[debug] [2026-11-05T05:27:43.330Z]  • non-static component /api/health/route
+[debug] [2026-11-05T05:27:43.330Z]  • non-static component /api/qdrant/reindex/route
+[debug] [2026-11-05T05:27:43.330Z]  • non-static component /api/qdrant/status/route
+[debug] [2026-11-05T05:27:43.330Z]  • non-static component /api/settings/route
+[debug] [2026-11-05T05:27:43.330Z]  • non-static component /api/settings/sessions/route
+[debug] [2026-11-05T05:27:43.331Z]  • non-static component /api/voice/[id]/chunks/route
+[debug] [2026-11-05T05:27:43.331Z]  • non-static component /api/voice/[id]/notes/route
+[debug] [2026-11-05T05:27:43.331Z]  • non-static component /api/voice/[id]/route
+[debug] [2026-11-05T05:27:43.331Z]  • non-static component /api/voice/route
+[debug] [2026-11-05T05:27:43.331Z]  • non-static component /page
+[info]  • and 14 other reasons, use --debug to see more
+[info] 
+[debug] [2026-11-05T05:28:06.734Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:28:06.734Z] Checked if tokens are valid: true, expires at: 1793859582307
+[debug] [2026-11-05T05:28:06.735Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ai-notez/sites/ai-notez [none]
+[debug] [2026-11-05T05:28:08.615Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ai-notez/sites/ai-notez 200
+[debug] [2026-11-05T05:28:08.616Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ai-notez/sites/ai-notez {"name":"projects/ai-notez/sites/ai-notez","defaultUrl":"https://ai-notez.web.app","type":"DEFAULT_SITE"}
+[debug] [2026-11-05T05:28:09.678Z] Error: EPERM: operation not permitted, symlink 'C:\Users\Shan\Desktop\NoteZ\node_modules\pg' -> 'C:\Users\Shan\Desktop\NoteZ\.firebase\bynote\functions\.next\node_modules\pg-587764f78a6c7a9c'
+[error] 
+[error] Error: An unexpected error has occurred.

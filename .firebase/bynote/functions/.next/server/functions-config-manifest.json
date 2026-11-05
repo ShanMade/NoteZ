@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/assistant": {},
+    "/api/auth": {},
+    "/api/voice/[id]/chunks": {},
+    "/api/voice/[id]/notes": {}
+  }
+}
