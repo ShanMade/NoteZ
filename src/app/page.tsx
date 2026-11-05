@@ -3,9 +3,9 @@ import { db } from "@/db";
 import { workspaceDocuments } from "@/db/schema";
 import { getOrCreateDemoUser, getSessionUser } from "@/lib/auth";
 import { geminiConfig } from "@/lib/gemini";
+import { checkQdrantStatus } from "@/lib/qdrant";
 import { serializeDocument, serializeUser } from "@/lib/workspace-server";
 import { NoteZClientRoot } from "@/components/NoteZClientRoot";
-import { ensureWorkspaceIndexed } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +16,19 @@ export default async function HomePage({
 }) {
   const params = await searchParams;
   const config = geminiConfig();
+  const qdrant = await checkQdrantStatus();
+
   const provider = {
     configured: Boolean(config.key),
     provider: (config.key ? "gemini" : "basic") as "gemini" | "basic",
     model: config.model,
+    qdrantConfigured: qdrant.connected,
+    qdrantMode: qdrant.mode,
+    qdrantUrl: qdrant.url,
+    vectorIndexedCount: qdrant.pointsCount,
   };
 
   const demoUserRow = await getOrCreateDemoUser();
-  await ensureWorkspaceIndexed(demoUserRow.id);
   const demoDocRows = await db
     .select()
     .from(workspaceDocuments)
@@ -39,8 +44,6 @@ export default async function HomePage({
 
   let initialUser = sessionUser ? serializeUser(sessionUser) : null;
   let initialDocuments = demoFallbackDocuments;
-
-  if (sessionUser) await ensureWorkspaceIndexed(sessionUser.id);
 
   if (sessionUser && sessionUser.id !== demoUserRow.id) {
     const rows = await db

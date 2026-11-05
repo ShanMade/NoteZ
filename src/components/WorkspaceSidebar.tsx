@@ -6,9 +6,11 @@ import {
   AudioLines,
   ChevronDown,
   ChevronRight,
+  FilePlus2,
   FileText,
   House,
   ListChecks,
+  Lock,
   LogOut,
   PanelLeft,
   PanelLeftClose,
@@ -21,18 +23,10 @@ import {
   X,
 } from "lucide-react";
 import type { WorkspaceDocument, WorkspaceUser } from "@/types/workspace";
+import { useOverlayFocus } from "@/hooks/useOverlayFocus";
 import { DocumentIcon, NoteZLogo, NoteZMark } from "./Brand";
 
-export type WorkspaceView =
-  | "home"
-  | "notes"
-  | "favorites"
-  | "tasks"
-  | "ai"
-  | "voice"
-  | "trash"
-  | "document"
-  | "settings";
+export type WorkspaceView = "home" | "notes" | "favorites" | "tasks" | "ai" | "voice" | "trash" | "document" | "settings";
 
 interface Props {
   user: WorkspaceUser;
@@ -47,7 +41,7 @@ interface Props {
   onToggleCollapse: () => void;
   onCloseMobile: () => void;
   onView: (view: WorkspaceView) => void;
-  onDocument: (id: string) => void;
+  onDocument: (id: string, openWithAiSidebar?: boolean) => void;
   onCreate: () => void;
   onCreateChild: (parentId: string) => void;
   onSearch: () => void;
@@ -56,63 +50,36 @@ interface Props {
 }
 
 const SECTIONS_KEY = "notez-sidebar-sections";
-type SectionKey = "pinned" | "pages";
+type SectionKey = "pages";
 
 function NavItem({
   icon: Icon,
   label,
   active,
-  badge,
-  collapsed,
+  count,
+  rail,
   onClick,
 }: {
   icon: LucideIcon;
   label: string;
   active?: boolean;
-  badge?: number;
-  collapsed: boolean;
+  count?: number;
+  rail: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      className={`nz2-nav-item ${active ? "is-active" : ""}`}
+      className={`ed-navitem ${active ? "is-active" : ""}`}
       onClick={onClick}
-      title={collapsed ? label : undefined}
-      aria-label={collapsed ? label : undefined}
+      title={rail ? label : undefined}
+      aria-label={rail ? label : undefined}
       aria-current={active ? "page" : undefined}
     >
-      <Icon size={17} strokeWidth={1.8} />
-      {!collapsed && <span className="nz2-label">{label}</span>}
-      {!collapsed && badge !== undefined && badge > 0 && <em className="nz2-badge">{badge}</em>}
+      <Icon size={16} strokeWidth={1.75} className="ed-navicon" />
+      {!rail && <span className="ed-navlabel">{label}</span>}
+      {!rail && count !== undefined && count > 0 && <span className="ed-navcount">{count}</span>}
     </button>
-  );
-}
-
-function Section({
-  title,
-  open,
-  onToggle,
-  action,
-  children,
-}: {
-  title: string;
-  open: boolean;
-  onToggle: () => void;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="nz2-section">
-      <div className="nz2-section-head">
-        <button type="button" className="nz2-section-toggle" onClick={onToggle} aria-expanded={open}>
-          <ChevronDown size={13} className={open ? "" : "is-closed"} />
-          <span>{title}</span>
-        </button>
-        {action}
-      </div>
-      {open && <div className="nz2-section-body">{children}</div>}
-    </section>
   );
 }
 
@@ -125,7 +92,6 @@ export function WorkspaceSidebar({
   mobileOpen,
   openTasks,
   voiceCount,
-  aiConnected,
   onToggleCollapse,
   onCloseMobile,
   onView,
@@ -136,48 +102,60 @@ export function WorkspaceSidebar({
   onSettings,
   onSignOut,
 }: Props) {
-  const [sections, setSections] = useState<Record<SectionKey, boolean>>({ pinned: true, pages: true });
+  const [sections, setSections] = useState<Record<SectionKey, boolean>>({ pages: true });
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [treeFilter, setTreeFilter] = useState("");
   const [userMenu, setUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const rail = collapsed && !mobileOpen;
+  useOverlayFocus(mobileOpen, sidebarRef, onCloseMobile, closeRef);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(SECTIONS_KEY);
       if (saved) setSections((prev) => ({ ...prev, ...JSON.parse(saved) }));
     } catch {
-      // Ignore storage errors
+      /* optional preference */
     }
   }, []);
-
   useEffect(() => {
     try {
       localStorage.setItem(SECTIONS_KEY, JSON.stringify(sections));
     } catch {
-      // Ignore storage errors
+      /* optional preference */
     }
   }, [sections]);
 
-  const active = useMemo(() => documents.filter((d) => !d.isArchived), [documents]);
+  const active = useMemo(() => documents.filter((doc) => !doc.isArchived), [documents]);
   const trashCount = documents.length - active.length;
-  const pinned = useMemo(() => active.filter((d) => d.isFavorite).slice(0, 6), [active]);
+  const favoriteCount = active.filter((doc) => doc.isFavorite).length;
+
+  const filteredActive = useMemo(() => {
+    const query = treeFilter.trim().toLocaleLowerCase();
+    if (!query) return active;
+    return active.filter(
+      (doc) =>
+        (doc.title || "Untitled").toLocaleLowerCase().includes(query) ||
+        (doc.tags || []).some((tag) => tag.toLocaleLowerCase().includes(query))
+    );
+  }, [active, treeFilter]);
 
   const childrenOf = useMemo(() => {
-    const ids = new Set(active.map((d) => d.id));
+    const ids = new Set(filteredActive.map((doc) => doc.id));
     const map = new Map<string | null, WorkspaceDocument[]>();
-    for (const doc of active) {
+    for (const doc of filteredActive) {
       const key = doc.parentId && ids.has(doc.parentId) ? doc.parentId : null;
-      map.set(key, [...(map.get(key) ?? []), doc]);
+      map.set(key, [...(map.get(key) || []), doc]);
     }
     return map;
-  }, [active]);
+  }, [filteredActive]);
 
-  const roots = childrenOf.get(null) ?? [];
-
-  // Reveal the ancestors of the open note so it is always visible in the tree.
+  // Reveal the open page's ancestors.
   useEffect(() => {
     if (!activeId) return;
-    const byId = new Map(active.map((d) => [d.id, d]));
+    const byId = new Map(active.map((doc) => [doc.id, doc]));
     const seen = new Set<string>();
     const next: Record<string, boolean> = {};
     let cursor = byId.get(activeId)?.parentId ?? null;
@@ -194,183 +172,272 @@ export function WorkspaceSidebar({
     const onDown = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setUserMenu(false);
     };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setUserMenu(false);
+    };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [userMenu]);
 
-  const initials = user.name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const initials = user.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const roots = childrenOf.get(null) || [];
 
   const renderTree = (doc: WorkspaceDocument, depth: number): React.ReactNode => {
-    const kids = childrenOf.get(doc.id) ?? [];
-    const isOpen = Boolean(expanded[doc.id]);
+    const kids = childrenOf.get(doc.id) || [];
+    const isOpen = Boolean(expanded[doc.id]) || Boolean(treeFilter.trim());
     const isActive = view === "document" && activeId === doc.id;
     return (
-      <li key={doc.id} className="nz2-tree-item">
-        <div className={`nz2-tree-row ${isActive ? "is-active" : ""}`} style={{ paddingLeft: 6 + depth * 14 }}>
+      <li key={doc.id}>
+        <div
+          className={`ed-treerow ${isActive ? "is-active" : ""}`}
+          style={{ paddingLeft: 4 + Math.min(depth, 5) * 12 }}
+        >
           <button
             type="button"
-            className={`nz2-tree-toggle ${kids.length ? "has-children" : ""}`}
+            className={`ed-treetoggle ${kids.length ? "has-children" : ""}`}
             onClick={() => setExpanded((prev) => ({ ...prev, [doc.id]: !prev[doc.id] }))}
             disabled={!kids.length}
-            aria-label={isOpen ? "Collapse" : "Expand"}
-            aria-expanded={isOpen}
+            aria-label={`${isOpen ? "Collapse" : "Expand"} ${doc.title || "Untitled"}`}
+            aria-expanded={kids.length ? isOpen : undefined}
           >
-            <ChevronRight size={13} className={isOpen ? "is-open" : ""} />
+            <ChevronRight size={11} className={isOpen ? "is-open" : ""} />
           </button>
-          <button type="button" className="nz2-tree-title" onClick={() => onDocument(doc.id)}>
-            <DocumentIcon icon={doc.icon} size={14} />
+          <button type="button" className="ed-treetitle" onClick={() => onDocument(doc.id)}>
+            <DocumentIcon icon={doc.icon} size={13} />
             <span>{doc.title || "Untitled"}</span>
+            {doc.isConfidential && <Lock size={9} className="ed-treelock" aria-label="Confidential" />}
+            {doc.isFavorite && <Star size={9} className="ed-treestar" fill="currentColor" aria-label="Favorite" />}
           </button>
-          <button
-            type="button"
-            className="nz2-tree-add"
-            title="Add subpage"
-            aria-label={`Add subpage to ${doc.title || "Untitled"}`}
-            onClick={() => {
-              setExpanded((prev) => ({ ...prev, [doc.id]: true }));
-              onCreateChild(doc.id);
-            }}
-          >
-            <Plus size={13} />
-          </button>
+          <div className="ed-treeactions">
+            <button
+              type="button"
+              title="Open with AI"
+              aria-label={`Ask AI about ${doc.title || "Untitled"}`}
+              onClick={() => onDocument(doc.id, true)}
+            >
+              <Sparkles size={11} />
+            </button>
+            <button
+              type="button"
+              title="Add subpage"
+              aria-label={`Add subpage to ${doc.title || "Untitled"}`}
+              onClick={() => {
+                setExpanded((prev) => ({ ...prev, [doc.id]: true }));
+                onCreateChild(doc.id);
+              }}
+            >
+              <Plus size={11} />
+            </button>
+          </div>
         </div>
-        {kids.length > 0 && isOpen && <ul className="nz2-tree-children">{kids.map((k) => renderTree(k, depth + 1))}</ul>}
+        {kids.length > 0 && isOpen && (
+          <ul className="ed-tree">{kids.map((child) => renderTree(child, depth + 1))}</ul>
+        )}
       </li>
     );
   };
 
   return (
     <>
-      {mobileOpen && <button type="button" className="nz2-scrim" onClick={onCloseMobile} aria-label="Close navigation" />}
+      {mobileOpen && (
+        <button
+          type="button"
+          className="ed-scrim"
+          onClick={onCloseMobile}
+          aria-label="Close navigation"
+          tabIndex={-1}
+        />
+      )}
       <aside
-        className={`nz2-side ${collapsed ? "is-collapsed" : ""} ${mobileOpen ? "is-open" : ""}`}
+        ref={sidebarRef}
+        className={`ed-side ${rail ? "is-rail" : ""} ${mobileOpen ? "is-open" : ""}`}
         aria-label="Workspace sidebar"
+        role={mobileOpen ? "dialog" : undefined}
+        aria-modal={mobileOpen ? true : undefined}
+        tabIndex={mobileOpen ? -1 : undefined}
       >
-        <div className="nz2-side-head">
-          {collapsed ? <NoteZMark size={28} /> : <NoteZLogo />}
-          {!collapsed && (
+        <div className="ed-side-top">
+          {rail ? (
+            <NoteZMark size={25} />
+          ) : (
             <>
-              <button type="button" className="nz2-icon-btn nz2-collapse-btn" onClick={onToggleCollapse} aria-label="Collapse sidebar" title="Collapse sidebar (⌘\)">
-                <PanelLeftClose size={17} />
-              </button>
-              <button type="button" className="nz2-icon-btn nz2-close-btn" onClick={onCloseMobile} aria-label="Close navigation">
-                <X size={18} />
-              </button>
+              <NoteZLogo />
+              {mobileOpen ? (
+                <button
+                  ref={closeRef}
+                  type="button"
+                  className="ed-iconbtn"
+                  onClick={onCloseMobile}
+                  aria-label="Close sidebar"
+                >
+                  <X size={17} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="ed-iconbtn"
+                  onClick={onToggleCollapse}
+                  aria-label="Collapse sidebar"
+                  title="Collapse sidebar (⌘\)"
+                >
+                  <PanelLeftClose size={15} />
+                </button>
+              )}
             </>
           )}
         </div>
-        {collapsed && (
-          <button type="button" className="nz2-icon-btn nz2-expand-btn" onClick={onToggleCollapse} aria-label="Expand sidebar" title="Expand sidebar (⌘\)">
-            <PanelLeft size={17} />
+
+        {rail && (
+          <button
+            type="button"
+            className="ed-iconbtn ed-railexpand"
+            onClick={onToggleCollapse}
+            aria-label="Expand sidebar"
+            title="Expand sidebar (⌘\)"
+          >
+            <PanelLeft size={15} />
           </button>
         )}
 
-        <div className="nz2-side-actions">
-          <button type="button" className="nz2-search-trigger" onClick={onSearch} title="Search (⌘K)">
-            <Search size={15} />
-            <span>Search</span>
-            <kbd>⌘K</kbd>
-          </button>
-          <button type="button" className="nz2-new-btn" onClick={onCreate} title="New page (⌘N)" aria-label="New page">
-            <Plus size={17} />
-          </button>
-        </div>
-
-        <nav className="nz2-nav" aria-label="Primary">
-          <NavItem icon={House} label="Home" active={view === "home"} collapsed={collapsed} onClick={() => onView("home")} />
-          <NavItem icon={FileText} label="All notes" active={view === "notes"} badge={active.length} collapsed={collapsed} onClick={() => onView("notes")} />
-          <NavItem icon={Star} label="Favorites" active={view === "favorites"} collapsed={collapsed} onClick={() => onView("favorites")} />
-          <NavItem icon={ListChecks} label="Tasks" active={view === "tasks"} badge={openTasks} collapsed={collapsed} onClick={() => onView("tasks")} />
-        </nav>
-
-        <nav className="nz2-nav nz2-nav-tools" aria-label="Tools">
-          {!collapsed && <div className="nz2-group-label">Intelligence</div>}
-          <NavItem icon={Sparkles} label="NoteZ AI" active={view === "ai"} collapsed={collapsed} onClick={() => onView("ai")} />
-          <NavItem icon={AudioLines} label="Voice notes" active={view === "voice"} badge={voiceCount} collapsed={collapsed} onClick={() => onView("voice")} />
-        </nav>
-
-        {!collapsed && (
-          <div className="nz2-side-scroll">
-            {pinned.length > 0 && (
-              <Section title="Pinned" open={sections.pinned} onToggle={() => setSections((s) => ({ ...s, pinned: !s.pinned }))}>
-                <ul className="nz2-pinned">
-                  {pinned.map((doc) => (
-                    <li key={doc.id}>
-                      <button
-                        type="button"
-                        className={`nz2-pin-item ${view === "document" && activeId === doc.id ? "is-active" : ""}`}
-                        onClick={() => onDocument(doc.id)}
-                      >
-                        <DocumentIcon icon={doc.icon} size={14} />
-                        <span>{doc.title || "Untitled"}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-            )}
-
-            <Section
-              title="Pages"
-              open={sections.pages}
-              onToggle={() => setSections((s) => ({ ...s, pages: !s.pages }))}
-              action={
-                <button type="button" className="nz2-section-add" onClick={onCreate} aria-label="New page" title="New page">
-                  <Plus size={14} />
-                </button>
-              }
+        {!rail && (
+          <div className="ed-side-lead">
+            <button
+              type="button"
+              className="ed-sidebtn"
+              onClick={onSearch}
+              title="Search (⌘K)"
             >
-              {roots.length ? (
-                <ul className="nz2-tree">{roots.map((doc) => renderTree(doc, 0))}</ul>
-              ) : (
-                <p className="nz2-side-empty">Pages you create will appear here.</p>
-              )}
-            </Section>
+              <Search size={14} />
+              <span>Search</span>
+              <kbd>⌘K</kbd>
+            </button>
+            <button
+              type="button"
+              className="ed-sidebtn ed-sidebtn-new"
+              onClick={onCreate}
+              title="New page (⌘N)"
+            >
+              <Plus size={14} />
+              <span>New page</span>
+            </button>
           </div>
         )}
 
-        <div className="nz2-side-foot">
-          <NavItem icon={Trash2} label="Trash" active={view === "trash"} badge={trashCount} collapsed={collapsed} onClick={() => onView("trash")} />
-          {!collapsed && (
-            <div className="nz2-ai-status">
-              <span className={`nz2-dot ${aiConnected ? "is-on" : ""}`} />
-              <span>{aiConnected ? "Gemini connected" : "Basic mode"}</span>
-            </div>
+        <div className="ed-side-scroll">
+          <div className="ed-navgroup">
+            <NavItem icon={House} label="Home" active={view === "home"} rail={rail} onClick={() => onView("home")} />
+            <NavItem icon={FileText} label="All notes" active={view === "notes"} count={active.length} rail={rail} onClick={() => onView("notes")} />
+            <NavItem icon={ListChecks} label="Tasks" active={view === "tasks"} count={openTasks} rail={rail} onClick={() => onView("tasks")} />
+            <NavItem icon={Star} label="Favorites" active={view === "favorites"} count={favoriteCount} rail={rail} onClick={() => onView("favorites")} />
+            <NavItem icon={Sparkles} label="ByNote AI" active={view === "ai"} rail={rail} onClick={() => onView("ai")} />
+            <NavItem icon={AudioLines} label="Voice notes" active={view === "voice"} count={voiceCount} rail={rail} onClick={() => onView("voice")} />
+          </div>
+
+          {!rail && (
+            <section className="ed-group ed-pages">
+              <div className="ed-group-head">
+                <button
+                  type="button"
+                  className="ed-group-toggle"
+                  onClick={() => setSections((s) => ({ ...s, pages: !s.pages }))}
+                  aria-expanded={sections.pages}
+                >
+                  <ChevronDown size={11} className={sections.pages ? "" : "is-closed"} />
+                  <span>Pages</span>
+                </button>
+                <button
+                  type="button"
+                  className="ed-group-add"
+                  onClick={onCreate}
+                  aria-label="New page"
+                  title="New page"
+                >
+                  <FilePlus2 size={12} />
+                </button>
+              </div>
+
+              {sections.pages && (
+                <>
+                  {active.length > 5 && (
+                    <div className="ed-treefilter">
+                      <Search size={11} />
+                      <input
+                        value={treeFilter}
+                        onChange={(event) => setTreeFilter(event.target.value)}
+                        placeholder="Filter"
+                        aria-label="Filter pages"
+                      />
+                      {treeFilter && (
+                        <button type="button" onClick={() => setTreeFilter("")} aria-label="Clear filter">
+                          <X size={11} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {roots.length ? (
+                    <ul className="ed-tree">{roots.map((doc) => renderTree(doc, 0))}</ul>
+                  ) : (
+                    <p className="ed-side-empty">
+                      {treeFilter ? "No matching pages." : "Pages you create appear here."}
+                    </p>
+                  )}
+                </>
+              )}
+            </section>
           )}
-          <div className="nz2-user" ref={menuRef}>
+        </div>
+
+        <div className="ed-side-foot">
+          <NavItem icon={Trash2} label="Trash" active={view === "trash"} count={trashCount} rail={rail} onClick={() => onView("trash")} />
+
+          <div className="ed-account" ref={menuRef}>
             <button
               type="button"
-              className="nz2-user-btn"
-              onClick={() => setUserMenu((v) => !v)}
+              className="ed-account-btn"
+              onClick={() => setUserMenu((value) => !value)}
               aria-haspopup="menu"
               aria-expanded={userMenu}
-              title={user.name}
+              aria-label={`Account menu for ${user.name}`}
             >
-              <span className="nz2-avatar">{initials}</span>
-              {!collapsed && (
-                <span className="nz2-user-meta">
+              <span className="ed-avatar">{initials}</span>
+              {!rail && (
+                <span className="ed-account-copy">
                   <strong>{user.name}</strong>
                   <small>{user.isDemo ? "Demo workspace" : user.email}</small>
                 </span>
               )}
-              {!collapsed && <ChevronDown size={14} />}
+              {!rail && <ChevronDown size={12} />}
             </button>
             {userMenu && (
-              <div className="nz2-user-menu" role="menu">
-                <div className="nz2-menu-head">
+              <div className="ed-menu ed-menu-up" role="menu">
+                <div className="ed-menu-head">
                   <strong>{user.name}</strong>
                   <small>{user.isDemo ? "Demo workspace" : user.email}</small>
                 </div>
-                <button type="button" role="menuitem" onClick={() => { setUserMenu(false); onSettings(); }}>
-                  <Settings size={15} /> Settings
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenu(false);
+                    onSettings();
+                  }}
+                >
+                  <Settings size={14} /> Settings
                 </button>
-                <button type="button" role="menuitem" className="is-danger" onClick={() => { setUserMenu(false); onSignOut(); }}>
-                  <LogOut size={15} /> Sign out
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="is-danger"
+                  onClick={() => {
+                    setUserMenu(false);
+                    onSignOut();
+                  }}
+                >
+                  <LogOut size={14} /> Sign out
                 </button>
               </div>
             )}

@@ -7,8 +7,6 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import "./studio.css";
-import "./studio-v2.css";
-import "./studio-v3.css";
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -30,9 +28,14 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NoteZ — A little space for big ideas",
+  title: "ByNote — A little space for big ideas",
   description:
     "A thoughtful workspace for your notes, voice memos, and ideas. Write clearly, stay organized, and think alongside AI.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

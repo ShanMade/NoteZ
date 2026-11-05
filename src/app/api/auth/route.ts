@@ -20,10 +20,14 @@ export const runtime = "nodejs";
 
 function getProviderStatus() {
   const config = geminiConfig();
+  const qdrantUrl = (process.env.QDRANT_URL || "http://localhost:6333").replace(/\/+$/, "");
   return {
     configured: Boolean(config.key),
     provider: (config.key ? "gemini" : "basic") as "gemini" | "basic",
     model: config.model,
+    qdrantConfigured: Boolean(process.env.QDRANT_URL),
+    qdrantMode: (process.env.QDRANT_URL ? "qdrant" : "postgres_vector") as "qdrant" | "postgres_vector",
+    qdrantUrl,
   };
 }
 

@@ -22,6 +22,7 @@ import {
 import type { ProviderStatus, VoiceNote, VoiceSegment, WorkspaceSettings } from "@/types/workspace";
 import { formatRelativeTime } from "@/lib/format";
 import { newId } from "@/lib/ids";
+import { ConfirmationDialog } from "./ConfirmationDialog";
 
 type Chunk = { blob: Blob; index: number; start: number; duration: number };
 type ChunkStatus = "queued" | "sending" | "done" | "failed";
@@ -100,6 +101,7 @@ export function WorkspaceVoice({
   const [renaming, setRenaming] = useState<{ speaker: string; value: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const activeRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
@@ -559,14 +561,12 @@ export function WorkspaceVoice({
   };
 
   const deleteSelected = async () => {
-    if (!selected) return;
-    if (!window.confirm("Delete this voice note and its transcript? This can't be undone.")) return;
+    if (!selected) throw new Error("This recording is no longer available.");
     const res = await fetch(`/api/voice/${selected.id}`, { method: "DELETE" });
-    if (res.ok) {
-      onNotesChange((prev) => prev.filter((n) => n.id !== selected.id));
-      setSelectedId(null);
-      onNotice("Voice note deleted");
-    }
+    if (!res.ok) throw new Error("Couldn't delete this recording. Please try again.");
+    onNotesChange((prev) => prev.filter((note) => note.id !== selected.id));
+    setSelectedId(null);
+    onNotice("Voice note deleted");
   };
 
   const transcriptLines = (note: VoiceNote): string[] => {
@@ -847,7 +847,7 @@ export function WorkspaceVoice({
                   <button type="button" className="nz2-icon-btn" onClick={exportText} title="Download transcript" aria-label="Download transcript">
                     <Download size={16} />
                   </button>
-                  <button type="button" className="nz2-icon-btn is-danger" onClick={() => void deleteSelected()} title="Delete recording" aria-label="Delete recording">
+                  <button type="button" className="nz2-icon-btn is-danger" onClick={() => setDeleteOpen(true)} disabled={isBusy} title="Delete recording" aria-label="Delete recording">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -859,7 +859,7 @@ export function WorkspaceVoice({
                     <h4>Summary</h4>
                     <p>{selected.structured.summary || "No summary available."}</p>
                     <button type="button" className="nz2-link" onClick={refineWithAI}>
-                      <Sparkles size={13} /> Refine with NoteZ AI
+                      <Sparkles size={13} /> Refine with ByNote AI
                     </button>
                   </div>
                   <div className="nz2-s-card">
@@ -983,6 +983,7 @@ export function WorkspaceVoice({
           )}
         </div>
       </div>
+      {deleteOpen && selected && <ConfirmationDialog title="Delete this recording?" description={`“${selected.title}” and its transcript will be permanently removed. Any notes you created from it will remain.`} confirmLabel="Delete recording" onCancel={() => setDeleteOpen(false)} onConfirm={deleteSelected} />}
     </div>
   );
 }

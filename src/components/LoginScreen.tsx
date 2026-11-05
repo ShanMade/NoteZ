@@ -246,7 +246,7 @@ export function LoginScreen({ onAuthenticated, onInstantBypass }: LoginScreenPro
                 <LoaderCircle size={17} className="nz-spin" />
               ) : (
                 <>
-                  {mode === "login" ? "Sign in to NoteZ" : "Create your account"}
+                  {mode === "login" ? "Sign in to ByNote" : "Create your account"}
                   <ArrowRight size={17} />
                 </>
               )}
@@ -254,7 +254,7 @@ export function LoginScreen({ onAuthenticated, onInstantBypass }: LoginScreenPro
           </form>
 
           <p className="nz-auth-switch">
-            {mode === "login" ? "New to NoteZ?" : "Already have an account?"}{" "}
+            {mode === "login" ? "New to ByNote?" : "Already have an account?"}{" "}
             <button
               type="button"
               onClick={() => {
@@ -268,14 +268,14 @@ export function LoginScreen({ onAuthenticated, onInstantBypass }: LoginScreenPro
         </div>
 
         <div className="nz-auth-footer">
-          <span>© {new Date().getFullYear()} NoteZ</span>
+          <span>© {new Date().getFullYear()} ByNote</span>
           <span>
             <ShieldCheck size={14} /> A quieter place for your ideas
           </span>
         </div>
       </section>
 
-      <section className="nz-auth-showcase" aria-label="Introducing NoteZ">
+      <section className="nz-auth-showcase" aria-label="Introducing ByNote">
         <div className="nz-showcase-inner">
           <div className="nz-showcase-top">
             <span>
@@ -287,7 +287,7 @@ export function LoginScreen({ onAuthenticated, onInstantBypass }: LoginScreenPro
             <span>01 / 03</span>
           </div>
           <div className="nz-showcase-art">
-            <img src="/images/notez-abstract.png" alt="Abstract lavender glass sculpture" />
+            <img src="/logo.png" alt="ByNote brand artwork" className="max-h-72 mx-auto object-contain drop-shadow-xl" />
             <div className="nz-float-card nz-float-one">
               <div className="nz-float-icon">
                 <AudioLines size={17} />
@@ -319,7 +319,7 @@ export function LoginScreen({ onAuthenticated, onInstantBypass }: LoginScreenPro
             </h2>
             <p>
               From quick thoughts to your next big project, everything comes together beautifully
-              in NoteZ.
+              in ByNote.
             </p>
             <div className="nz-showcase-features">
               <span>

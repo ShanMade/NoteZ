@@ -69,7 +69,7 @@ export function WorkspaceTasks({ documents, onToggle, onOpen }: Props) {
   }, [shown]);
 
   return (
-    <div className="nz2-page nz2-tasks">
+    <div className="nz2-page">
       <header className="nz2-page-head">
         <div>
           <span className="nz2-eyebrow">Across your notes</span>
@@ -106,7 +106,7 @@ export function WorkspaceTasks({ documents, onToggle, onOpen }: Props) {
             <ListChecks size={22} />
           </span>
           <h3>{filter === "open" ? "Nothing left on your list" : "No tasks here yet"}</h3>
-          <p>Add a to-do block to any note, or ask NoteZ AI to pull tasks out of a meeting.</p>
+          <p>Add a to-do block to any note, or ask ByNote AI to pull tasks out of a meeting.</p>
         </div>
       ) : (
         <div className="nz2-task-groups">

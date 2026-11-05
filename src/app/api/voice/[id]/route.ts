@@ -9,7 +9,6 @@ import {
   serializeVoice,
   validUuid,
 } from "@/lib/workspace-server";
-import { indexVoiceNote, queueIndex, removeVoiceFromIndex } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +88,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .where(and(eq(workspaceVoiceNotes.id, id), eq(workspaceVoiceNotes.userId, user.id)))
     .returning();
 
-  queueIndex(indexVoiceNote(user.id, id));
   return NextResponse.json({ note: serializeVoice(updated) });
 }
 
@@ -101,6 +99,5 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   await db
     .delete(workspaceVoiceNotes)
     .where(and(eq(workspaceVoiceNotes.id, id), eq(workspaceVoiceNotes.userId, user.id)));
-  queueIndex(removeVoiceFromIndex(user.id, id));
   return NextResponse.json({ ok: true });
 }

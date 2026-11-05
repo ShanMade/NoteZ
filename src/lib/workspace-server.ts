@@ -118,6 +118,10 @@ export function normalizeSettings(input: unknown): WorkspaceSettings {
     voiceLanguage: lang,
     speakerLabels: bool(raw.speakerLabels, DEFAULT_SETTINGS.speakerLabels),
     autoStructureVoice: bool(raw.autoStructureVoice, DEFAULT_SETTINGS.autoStructureVoice),
+    excludeConfidentialFromSearch: bool(
+      raw.excludeConfidentialFromSearch,
+      DEFAULT_SETTINGS.excludeConfidentialFromSearch
+    ),
   };
 }
 
@@ -192,6 +196,7 @@ export function serializeDocument(row: typeof workspaceDocuments.$inferSelect): 
     blocks: row.blocks ?? [],
     isFavorite: row.isFavorite,
     isArchived: row.isArchived,
+    isConfidential: Boolean(row.isConfidential),
     isAiGenerated: row.isAiGenerated,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -209,6 +214,8 @@ export function serializeAssistant(row: typeof workspaceAssistantRuns.$inferSele
     title: row.title,
     blocks: row.blocks ?? [],
     sources: row.sources ?? [],
+    toolCalls: row.toolCalls ?? [],
+    proposals: row.proposals ?? [],
     provider: row.provider,
     createdAt: row.createdAt.toISOString(),
   };
@@ -260,7 +267,7 @@ export async function seedPersonalWorkspace(userId: string): Promise<void> {
   }> = [
     {
       id: welcomeId,
-      title: "Welcome to NoteZ",
+      title: "Welcome to ByNote",
       icon: "sparkles",
       cover: "lavender",
       tags: ["start-here"],
@@ -269,7 +276,7 @@ export async function seedPersonalWorkspace(userId: string): Promise<void> {
         starterBlock(welcomeId, "paragraph", "A little space for big ideas. This is your starting point for writing, planning, and thinking clearly."),
         starterBlock(welcomeId, "heading2", "Make this space yours"),
         starterBlock(welcomeId, "bullet", "Create a page for anything on your mind. Type / to add headings, lists, tasks, and tables."),
-        starterBlock(welcomeId, "bullet", "Ask NoteZ AI about your notes, or turn a rough thought into a structured draft."),
+        starterBlock(welcomeId, "bullet", "Ask ByNote AI about your notes, or turn a rough thought into a structured draft."),
         starterBlock(welcomeId, "bullet", "Record a voice note and it becomes a summary, decisions, and action items."),
         starterBlock(welcomeId, "heading2", "A few things to try"),
         starterBlock(welcomeId, "todo", "Create your first note", { checked: false }),
@@ -348,7 +355,15 @@ export async function seedPersonalWorkspace(userId: string): Promise<void> {
       cover: entry.cover,
       tags: entry.tags,
       isFavorite: entry.isFavorite,
+      isConfidential: false,
       blocks: entry.blocks.map((b, i) => ({ ...b, position: i })),
     }))
   );
+
+  try {
+    const { reindexAllUserData } = await import("@/lib/qdrant");
+    await reindexAllUserData(userId);
+  } catch {
+    // Indexing will run lazily on first AI tool call if skipped
+  }
 }

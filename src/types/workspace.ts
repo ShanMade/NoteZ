@@ -20,6 +20,7 @@ export interface WorkspaceSettings {
   voiceLanguage: string;
   speakerLabels: boolean;
   autoStructureVoice: boolean;
+  excludeConfidentialFromSearch: boolean;
 }
 
 export const DEFAULT_SETTINGS: WorkspaceSettings = {
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: WorkspaceSettings = {
   voiceLanguage: "en-US",
   speakerLabels: true,
   autoStructureVoice: false,
+  excludeConfidentialFromSearch: true,
 };
 
 export interface WorkspaceUser {
@@ -55,14 +57,67 @@ export interface WorkspaceDocument {
   blocks: NoteBlock[];
   isFavorite: boolean;
   isArchived: boolean;
+  isConfidential: boolean;
   isAiGenerated: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface DocumentVersion {
+  id: string;
+  documentId: string;
+  title: string;
+  wordCount: number;
+  changeSummary: string;
+  blocks: NoteBlock[];
+  createdAt: string;
+}
+
 export interface AssistantSource {
   id: string;
   title: string;
+  similarityScore?: number;
+  entityType?: "document" | "voice" | "library";
+}
+
+export type AiToolName =
+  | "qdrant_semantic_search"
+  | "sql_keyword_search"
+  | "rename_note"
+  | "modify_note"
+  | "summarize_note"
+  | "reproduce_note"
+  | "extract_tasks"
+  | "organize_note"
+  | "append_blocks"
+  | "create_note";
+
+export interface AiToolCallTrace {
+  id: string;
+  tool: AiToolName;
+  label: string;
+  status: "executed" | "awaiting_confirmation";
+  detail: string;
+}
+
+export interface AiToolProposal {
+  id: string;
+  tool: Exclude<AiToolName, "qdrant_semantic_search" | "sql_keyword_search">;
+  label: string;
+  description: string;
+  targetDocumentId?: string | null;
+  targetDocumentTitle?: string;
+  /** For rename_note */
+  proposedTitle?: string;
+  previousTitle?: string;
+  /** For organize_note / reproduce_note */
+  proposedIcon?: string;
+  proposedCover?: string | null;
+  proposedTags?: string[];
+  /** For modify_note / summarize_note / reproduce_note / extract_tasks / append_blocks / create_note */
+  proposedBlocks?: Array<Pick<NoteBlock, "type" | "content" | "props">>;
+  /** How blocks should be applied to the target note */
+  applyMode?: "replace_blocks" | "prepend_blocks" | "append_blocks" | "create_new_note" | "metadata_only";
 }
 
 export interface AssistantResult {
@@ -70,6 +125,9 @@ export interface AssistantResult {
   title: string;
   blocks: Array<Pick<NoteBlock, "type" | "content" | "props">>;
   sources: AssistantSource[];
+  toolCalls?: AiToolCallTrace[];
+  proposals?: AiToolProposal[];
+  semanticSearchPerformed?: boolean;
 }
 
 export interface AssistantHistoryItem {
@@ -82,6 +140,8 @@ export interface AssistantHistoryItem {
   title: string;
   blocks: AssistantResult["blocks"];
   sources: AssistantSource[];
+  toolCalls?: AiToolCallTrace[];
+  proposals?: AiToolProposal[];
   provider: string;
   createdAt: string;
 }
@@ -127,4 +187,36 @@ export interface ProviderStatus {
   configured: boolean;
   provider: "gemini" | "basic";
   model: string;
+  qdrantConfigured: boolean;
+  qdrantMode: "qdrant" | "postgres_vector" | "local_hybrid";
+  qdrantUrl?: string;
+  vectorIndexedCount?: number;
+}
+
+export interface SemanticSearchResult {
+  id: string;
+  documentId?: string | null;
+  voiceId?: string | null;
+  title: string;
+  snippet: string;
+  score: number;
+  similarityPercent: number;
+  entityType: "document" | "voice" | "library";
+  isConfidential: boolean;
+  tags: string[];
+  updatedAt: string;
+}
+
+export interface NoteKeywordMatch {
+  blockId: string;
+  position: number;
+  blockType: string;
+  snippet: string;
+  occurrences: number;
+}
+
+export interface InNoteSearchResponse {
+  query: string;
+  totalOccurrences: number;
+  matchingBlocks: NoteKeywordMatch[];
 }

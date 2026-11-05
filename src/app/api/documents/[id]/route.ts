@@ -4,7 +4,6 @@ import { db } from "@/db";
 import { workspaceDocuments } from "@/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { normalizeBlocks, serializeDocument, validUuid } from "@/lib/workspace-server";
-import { indexDocument, queueIndex } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 async function owned(id: string, userId: string) {
@@ -34,6 +33,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (typeof body.cover === "string" || body.cover === null) patch.cover = typeof body.cover === "string" ? body.cover.slice(0, 30) : null;
     if (typeof body.isFavorite === "boolean") patch.isFavorite = body.isFavorite;
     if (typeof body.isArchived === "boolean") patch.isArchived = body.isArchived;
+    if (typeof body.isConfidential === "boolean") patch.isConfidential = body.isConfidential;
     if (Array.isArray(body.tags)) {
       patch.tags = body.tags
         .filter((t: unknown): t is string => typeof t === "string")
@@ -56,12 +56,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       patch.parentId = body.parentId;
     }
     const [updated] = await db.update(workspaceDocuments).set(patch).where(and(eq(workspaceDocuments.id, id), eq(workspaceDocuments.userId, user.id))).returning();
-    if (updated.isArchived) {
-      queueIndex(indexDocument(user.id, id));
-    } else {
-      queueIndex(indexDocument(user.id, id));
+    const doc = serializeDocument(updated);
+
+    // Auto-sync into Qdrant & vector store
+    try {
+      const { indexDocumentVector } = await import("@/lib/qdrant");
+      void indexDocumentVector(doc, user.id);
+    } catch {
+      // background
     }
-    return NextResponse.json({ document: serializeDocument(updated) });
+
+    return NextResponse.json({ document: doc });
   } catch (error) {
     console.error("Update document:", error);
     return NextResponse.json({ error: "Could not save this note." }, { status: 500 });
@@ -77,6 +82,5 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     await tx.update(workspaceDocuments).set({ parentId: row.parentId }).where(and(eq(workspaceDocuments.parentId, id), eq(workspaceDocuments.userId, user.id)));
     await tx.delete(workspaceDocuments).where(and(eq(workspaceDocuments.id, id), eq(workspaceDocuments.userId, user.id)));
   });
-  queueIndex(indexDocument(user.id, id));
   return NextResponse.json({ ok: true });
 }

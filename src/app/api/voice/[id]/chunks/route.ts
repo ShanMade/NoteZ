@@ -6,7 +6,6 @@ import { getSessionUser } from "@/lib/auth";
 import { geminiJson } from "@/lib/gemini";
 import { serializeVoice, validUuid } from "@/lib/workspace-server";
 import type { VoiceSegment } from "@/types/workspace";
-import { indexVoiceNote, queueIndex } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,7 +46,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const all = chunks.flatMap((c) => c.segments);
     const transcript = all.map((s) => `${s.speaker}: ${s.text}`).join("\n");
     const [updated] = await db.update(workspaceVoiceNotes).set({ segments: all, transcript, durationSeconds: Math.max(note.durationSeconds, Math.round(start + duration)), updatedAt: new Date() }).where(and(eq(workspaceVoiceNotes.id, id), eq(workspaceVoiceNotes.userId, user.id))).returning();
-    queueIndex(indexVoiceNote(user.id, id));
     return NextResponse.json({ note: serializeVoice(updated), segments });
   } catch (error) {
     console.error("Transcribe voice chunk:", error);

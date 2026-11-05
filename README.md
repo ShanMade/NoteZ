@@ -1,37 +1,98 @@
-# NoteZ
+# ByNote (formerly NoteZ)
 
-A private note workspace with an authenticated block editor, nested pages, favorites, search, an optional Gemini assistant, and voice-to-note capture.
+A modern, distraction-free thinking workspace with rich block editing, nested pages, voice-to-note audio transcription, and semantic vector intelligence powered by Qdrant and Gemini.
 
-## Setup
+Deployable to Firebase App Hosting / Cloud Run and Firebase Hosting (`byote.web.app`).
 
-1. Install dependencies with `npm install`.
-2. Set `DATABASE_URL` in `.env` to a PostgreSQL connection string.
-3. Optionally set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) in the server environment. `GEMINI_MODEL` defaults to `gemini-3.5-flash-lite` and may be overridden with a supported Gemini model ID.
-4. Apply the schema with `npx drizzle-kit push`, then run `npm run dev`.
+---
 
-The production health endpoint is `/api/health`.
+## 🚀 Key Features
 
-## Accounts and privacy
+- **Block-Based Canvas**: Headings, bullets, todo checklists, code, callouts, and table grids with smooth inline formatting.
+- **Intelligent Assistant (ByNote AI)**: Deep context awareness across your workspace powered by Gemini and semantic vector search.
+- **Voice Studio**: Multi-speaker chunked transcription, summary extraction, and action-item generation.
+- **Dual Vector Architecture**:
+  - Connects to hosted Qdrant instances (e.g. Qdrant Cloud) or local instances via `QDRANT_URL` and `QDRANT_API_KEY`.
+  - Transparent fallback to PostgreSQL vector math if Qdrant is unavailable.
+- **FastAPI Vector Bridge**: Dedicated Python service in `fastapi_app/` for high-performance embeddings and semantic search routing.
+- **Firebase Ready**: Pre-configured for Firebase deployment with multi-target hosting and environment secrets.
 
-Email/password accounts use salted scrypt password hashes and random, hashed, expiring HttpOnly sessions. Each account has its own documents, assistant history, and voice notes. The demo button creates a separate temporary demo account and starter workspace; it is not a shared public notebook. Demo data remains available for the lifetime of that browser's session. Password reset, email verification, and external identity providers are not configured in this starter.
+---
 
-The AI assistant reads only the context selected in the interface (current note, all active notes, or none). It never mutates notes by itself: the user explicitly chooses whether to create a page or append suggested blocks. The Gemini key remains on the server. Without a key, the interface clearly indicates basic extraction mode rather than presenting local extraction as generative AI.
+## 🛠️ Environment Variables & Secrets
 
-## Voice notes
+All secrets and sensitive configurations should be provided via environment variables (or GitHub Repository Secrets & Cloud Secrets). **Never commit real keys or `.env` files to git.**
 
-With Gemini configured, the browser records separate, independently encoded segments of up to 40 seconds and sends them sequentially to the server. The server forwards each segment to Gemini, requesting speaker-labeled text and approximate timestamps. Speaker labels are inferred, not verified identities, and may vary between chunks. The transcript is saved in PostgreSQL; raw audio is not stored. Review transcripts before sharing. Microphone access requires a secure browser context and user permission.
+### Frontend / Next.js (`.env`)
 
-Without Gemini, supported browsers may offer single-speaker Web Speech dictation; pasted transcripts can also be saved and turned into notes. Browser speech services have their own privacy policies.
+| Variable | Description | Default / Example |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/app_db` |
+| `GEMINI_API_KEY` | Google Gemini API key for ByNote AI | `AIza...` |
+| `GEMINI_MODEL` | Gemini model ID | `gemini-3.5-flash-lite` |
+| `QDRANT_URL` | Qdrant vector database endpoint | `https://xyz-example.qdrant.tech` or `http://localhost:6333` |
+| `QDRANT_API_KEY` | Qdrant API key (required for Qdrant Cloud) | `your-qdrant-cloud-api-key` |
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase Client API Key | Firebase Config `apiKey` |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase Auth Domain | `ai-notez.firebaseapp.com` |
+| `NEXT_PUBLIC_FIREBASE_DATABASE_URL` | Firebase Realtime DB URL | `https://ai-notez-default-rtdb.firebaseio.com` |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Project ID | `ai-notez` |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`| Firebase Storage Bucket | `ai-notez.firebasestorage.app` |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase Messaging Sender ID | `275128405663` |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase Web App ID | `1:275128405663:web:...` |
+| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | Firebase Google Analytics ID | `G-FFDFQ48X7K` |
 
-## Search architecture
+### FastAPI Backend (`fastapi_app/.env`)
 
-NoteZ indexes every note, voice transcript, and saved AI answer into `nz_search_chunks` (Postgres) as ~900-character passages with a 384-dimension vector.
+| Variable | Description |
+| :--- | :--- |
+| `DATABASE_URL` | Hosted PostgreSQL connection URL |
+| `QDRANT_URL` | Hosted Qdrant URL |
+| `QDRANT_API_KEY` | Qdrant Cloud API Key |
 
-- **Semantic search** (global palette, ⌘K): hybrid ranking that blends vector similarity with SQL keyword scoring. It searches only the signed-in user's own content — never other accounts or app internals.
-- **In-note keyword search** (⌘F): SQL-scoped to a single note, so results can never leak across notes.
-- **Qdrant**: set `QDRANT_URL` (and `QDRANT_API_KEY` if required) to serve vector search from Qdrant. The collection and payload indexes are created automatically, and Postgres remains the source of truth and fallback. `QDRANT_COLLECTION` optionally overrides the collection name.
-- **Embeddings**: `GEMINI_API_KEY` enables `gemini-embedding-001`. Without it, a deterministic local 384-dimension projection is used, and the UI says so.
-- **Backfill**: existing workspaces are indexed automatically on first load; Settings → Search & memory can rebuild the index at any time.
+---
 
-Search status and passage counts are shown in Settings → Search & memory.
-"# NoteZ" 
+## 📦 Local Development
+
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Configure your environment**:
+   Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Database schema**:
+   ```bash
+   npx drizzle-kit push
+   ```
+
+4. **Run development server**:
+   ```bash
+   npm run dev
+   ```
+
+5. **(Optional) Run FastAPI bridge & local databases with Docker**:
+   ```bash
+   docker compose up -d
+   ```
+
+---
+
+## 🌐 Firebase & Cloud Deployment
+
+### 1. Hosted Cloud Storages & Databases
+- **PostgreSQL**: Deploy using Neon.tech, Supabase, or Google Cloud SQL, and pass the connection string as `DATABASE_URL`.
+- **Qdrant Vector DB**: Deploy a managed cluster on [Qdrant Cloud](https://cloud.qdrant.io) and pass `QDRANT_URL` and `QDRANT_API_KEY`.
+- **Firebase Storage & RTDB**: Pre-configured client SDK in `src/lib/firebase.ts` connects automatically to `ai-notez.firebasestorage.app` and `https://ai-notez-default-rtdb.firebaseio.com`.
+
+### 2. Firebase Hosting (`byote.web.app`)
+To deploy via Firebase CLI:
+```bash
+firebase use ai-notez
+firebase deploy --only hosting
+```
+
+Or connect the GitHub repository to Firebase App Hosting / GitHub Actions for continuous automated deployment on push to `main`.

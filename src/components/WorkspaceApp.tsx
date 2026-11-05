@@ -2,8 +2,9 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Check, ChevronRight, LoaderCircle, Menu, Plus, Search, Sparkles } from "lucide-react";
+import { AlertCircle, Check, LoaderCircle, Menu, Plus, Search, Sparkles } from "lucide-react";
 import type {
+  AiToolProposal,
   AssistantHistoryItem,
   AssistantResult,
   ProviderStatus,
@@ -22,7 +23,9 @@ import { WorkspaceEditor } from "./WorkspaceEditor";
 import { WorkspaceAI } from "./WorkspaceAI";
 import { WorkspaceVoice } from "./WorkspaceVoice";
 import { WorkspaceSettingsPage } from "./WorkspaceSettingsPage";
-import { WorkspaceSearch, MobileTabBar } from "./WorkspaceSearch";
+import { WorkspaceSearch } from "./WorkspaceSearch";
+import { ConfirmationDialog } from "./ConfirmationDialog";
+import { MobileNavBar } from "./MobileNavBar";
 import { DocumentIcon } from "./Brand";
 
 interface Props {
@@ -33,14 +36,14 @@ interface Props {
   onSignedOut?: () => void;
 }
 
-const RAIL_KEY = "notez-rail-collapsed";
+const RAIL_KEY = "bynote-rail-collapsed";
 
 const VIEW_LABELS: Record<WorkspaceView, string> = {
   home: "Home",
   notes: "All notes",
   favorites: "Favorites",
   tasks: "Tasks",
-  ai: "NoteZ AI",
+  ai: "ByNote AI",
   voice: "Voice studio",
   trash: "Trash",
   document: "Note",
@@ -58,6 +61,8 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [deleteDocumentId, setDeleteDocumentId] = useState<string | null>(null);
+  const [noteAiSidebarOpen, setNoteAiSidebarOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [creatingPage, setCreatingPage] = useState(false);
@@ -87,7 +92,6 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
     toastTimer.current = setTimeout(() => setToast(""), 3200);
   }, []);
 
-  // Restore sidebar preference and load voice/AI history once.
   useEffect(() => {
     try {
       setRailCollapsed(localStorage.getItem(RAIL_KEY) === "1");
@@ -118,7 +122,6 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
     }
   }, [railCollapsed]);
 
-  // Apply theme, accent, and density from settings.
   useEffect(() => {
     const settings = user.settings;
     const root = document.documentElement;
@@ -139,7 +142,7 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
     return () => media.removeEventListener("change", apply);
   }, [user.settings]);
 
-  // Global shortcuts: ⌘K search, ⌘/ AI, ⌘\ sidebar, ⌘, settings, ⌘N new page.
+  // Global shortcuts: ⌘K search, ⌘/ AI (opens sidebar when in a note!), ⌘\ sidebar, ⌘, settings, ⌘N new page.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey;
@@ -150,7 +153,11 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
         setSearchOpen((v) => !v);
       } else if (key === "/" || event.code === "Slash") {
         event.preventDefault();
-        openAI();
+        if (view === "document" && currentDoc) {
+          setNoteAiSidebarOpen((prev) => !prev);
+        } else {
+          openAI();
+        }
       } else if (key === "\\") {
         event.preventDefault();
         setRailCollapsed((v) => !v);
@@ -175,7 +182,7 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
       window.removeEventListener("beforeunload", beforeUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, voiceBusy, activeId]);
+  }, [view, voiceBusy, activeId, currentDoc]);
 
   const persist = useCallback(
     (id: string) => {
@@ -196,6 +203,7 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
               blocks: doc.blocks,
               isFavorite: doc.isFavorite,
               isArchived: doc.isArchived,
+              isConfidential: doc.isConfidential,
               parentId: doc.parentId,
             }),
           });
@@ -248,7 +256,6 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
     [persist]
   );
 
-  // Save pending edits when the tab is hidden or the page unloads.
   useEffect(() => {
     const onHide = () => {
       if (document.visibilityState === "hidden") {
@@ -288,11 +295,14 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
     void flush(activeId).then(finish);
   };
 
-  const openDocument = (id: string, skipGuard = false) => {
+  const openDocument = (id: string, openWithAiSidebar = false, skipGuard = false) => {
     if (!skipGuard && !canLeaveVoice()) return;
     if (activeId !== id) void flush(activeId);
     setActiveId(id);
     setView("document");
+    if (openWithAiSidebar) {
+      setNoteAiSidebarOpen(true);
+    }
     setMobileNavOpen(false);
     setSearchOpen(false);
     setSaveState("saved");
@@ -306,8 +316,10 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
     title?: string;
     icon?: string;
     cover?: string | null;
+    tags?: string[];
     blocks?: Array<Partial<NoteBlock>>;
     parentId?: string | null;
+    isConfidential?: boolean;
     isAiGenerated?: boolean;
   } = {}): Promise<WorkspaceDocument | null> => {
     if (!canLeaveVoice() || creatingRef.current) return null;
@@ -324,7 +336,7 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
       const doc = data.document as WorkspaceDocument;
       docsRef.current = [doc, ...docsRef.current];
       setDocuments([...docsRef.current]);
-      openDocument(doc.id, true);
+      openDocument(doc.id, false, true);
       notify("New page created");
       return doc;
     } catch (error) {
@@ -352,23 +364,18 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm("Permanently delete this page? This can't be undone.")) return;
-    try {
-      await flush(id);
-      const res = await fetch(`/api/documents/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      docsRef.current = docsRef.current
-        .filter((d) => d.id !== id)
-        .map((d) => (d.parentId === id ? { ...d, parentId: null } : d));
-      setDocuments([...docsRef.current]);
-      if (activeId === id) {
-        setActiveId(null);
-        setView("notes");
-      }
-      notify("Page permanently deleted");
-    } catch {
-      notify("Couldn't delete this page");
+    await flush(id);
+    const res = await fetch(`/api/documents/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Couldn't delete this page. Please try again.");
+    docsRef.current = docsRef.current
+      .filter((d) => d.id !== id)
+      .map((d) => (d.parentId === id ? { ...d, parentId: null } : d));
+    setDocuments([...docsRef.current]);
+    if (activeId === id) {
+      setActiveId(null);
+      setView("notes");
     }
+    notify("Page permanently deleted");
   };
 
   const duplicate = async (doc: WorkspaceDocument) => {
@@ -376,8 +383,10 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
       title: `${doc.title || "Untitled"} (copy)`,
       icon: doc.icon,
       cover: doc.cover,
+      tags: doc.tags,
       blocks: doc.blocks,
       parentId: doc.parentId,
+      isConfidential: doc.isConfidential,
       isAiGenerated: doc.isAiGenerated,
     });
   };
@@ -391,6 +400,13 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
   };
 
   const openAI = (prompt = "") => {
+    if (view === "document" && currentDoc) {
+      setAiPrompt(prompt);
+      setNoteAiSidebarOpen(true);
+      setSearchOpen(false);
+      setMobileNavOpen(false);
+      return;
+    }
     if (view === "voice" && !canLeaveVoice()) return;
     setAiPrompt(prompt);
     setSearchOpen(false);
@@ -426,8 +442,63 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
       position: currentDoc.blocks.length + i,
     }));
     update(currentDoc.id, { blocks: [...currentDoc.blocks, ...added] });
-    openDocument(currentDoc.id, true);
+    openDocument(currentDoc.id, false, true);
     notify("Suggested blocks added to your note");
+  };
+
+  // A confirmed suggestion is saved only after a backup and a successful server response.
+  const applyAiProposal = async (proposal: AiToolProposal) => {
+    const targetId = proposal.targetDocumentId || currentDoc?.id || null;
+    if (proposal.applyMode === "create_new_note" || proposal.tool === "reproduce_note") {
+      const created = await createDocument({
+        title: proposal.proposedTitle || "AI note",
+        icon: proposal.proposedIcon || "sparkles",
+        cover: proposal.proposedCover !== undefined ? proposal.proposedCover : "lavender",
+        tags: proposal.proposedTags || [],
+        blocks: proposal.proposedBlocks || [],
+        isAiGenerated: true,
+      });
+      if (!created) throw new Error("Couldn't create the suggested note. Please try again.");
+      notify(`Created “${created.title}”`);
+      return;
+    }
+    if (!targetId) throw new Error("Open a note before applying these changes.");
+    await flush(targetId);
+    const targetDoc = docsRef.current.find((item) => item.id === targetId && !item.isArchived);
+    if (!targetDoc) throw new Error("This note is no longer available. Choose another note and try again.");
+    const backup = await fetch(`/api/documents/${targetDoc.id}/versions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ summary: `Before AI: ${proposal.label}` }),
+    });
+    if (!backup.ok) throw new Error("Couldn't create a backup, so no changes were applied.");
+    const patch: Partial<WorkspaceDocument> = {};
+    if (proposal.proposedTitle && proposal.tool === "rename_note") patch.title = proposal.proposedTitle;
+    if (proposal.proposedIcon) patch.icon = proposal.proposedIcon;
+    if (proposal.proposedCover !== undefined) patch.cover = proposal.proposedCover;
+    if (proposal.proposedTags?.length) patch.tags = proposal.proposedTags;
+    if (proposal.proposedBlocks?.length) {
+      const incoming: NoteBlock[] = proposal.proposedBlocks.map((block, index) => ({
+        id: newId(), pageId: targetDoc.id, type: block.type, content: block.content,
+        props: block.props || {}, position: index,
+      }));
+      const combined = proposal.applyMode === "replace_blocks" ? incoming : proposal.applyMode === "prepend_blocks" ? [...incoming, ...targetDoc.blocks] : [...targetDoc.blocks, ...incoming];
+      patch.blocks = combined.map((block, position) => ({ ...block, position }));
+    }
+    if (Object.keys(patch).length === 0) throw new Error("There are no changes to apply.");
+    setSaveState("saving");
+    try {
+      const res = await fetch(`/api/documents/${targetDoc.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      if (!res.ok) throw new Error("Couldn't save the suggested changes. Your original note is safe.");
+      const data = await res.json();
+      docsRef.current = docsRef.current.map((item) => item.id === targetDoc.id ? { ...item, ...patch, updatedAt: data.document.updatedAt } : item);
+      setDocuments([...docsRef.current]);
+      setSaveState("saved");
+      notify(`Changes applied to “${patch.title || targetDoc.title || "Untitled"}”`);
+    } catch (failure) {
+      setSaveState("error");
+      throw failure;
+    }
   };
 
   const createVoiceNote = async (voice: VoiceNote) => {
@@ -517,7 +588,7 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
   const libraryViews: WorkspaceView[] = ["notes", "favorites", "trash"];
 
   return (
-    <div className="nz2-app" data-density={user.settings.density}>
+    <div className="nz2-app" data-density={user.settings.density} data-view={view}>
       <WorkspaceSidebar
         user={user}
         documents={documents}
@@ -531,7 +602,7 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
         onToggleCollapse={() => setRailCollapsed((v) => !v)}
         onCloseMobile={() => setMobileNavOpen(false)}
         onView={navigate}
-        onDocument={openDocument}
+        onDocument={(id, withAi) => openDocument(id, withAi)}
         onCreate={() => void createDocument()}
         onCreateChild={(parentId) => void createDocument({ parentId })}
         onSearch={() => setSearchOpen(true)}
@@ -540,45 +611,25 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
       />
 
       <div className="nz2-main">
-        <header className="nz2-topbar">
-          <div className="nz2-topbar-left">
-            <button
-              type="button"
-              className="nz2-icon-btn nz2-menu-btn"
-              aria-label="Open navigation"
-              onClick={() => setMobileNavOpen(true)}
-            >
-              <Menu size={19} />
+        <header className="ed-mobilehead">
+          <button
+            type="button"
+            className="ed-iconbtn"
+            aria-label="Open navigation"
+            onClick={() => setMobileNavOpen(true)}
+          >
+            <Menu size={18} />
+          </button>
+          <span className="ed-mobilehead-title">
+            {view === "document" && currentDoc ? <DocumentIcon icon={currentDoc.icon} size={14} /> : null}
+            {crumbLabel}
+          </span>
+          <div className="ed-mobilehead-actions">
+            <button type="button" className="ed-iconbtn" aria-label="Search workspace" onClick={() => setSearchOpen(true)}>
+              <Search size={17} />
             </button>
-            <nav className="nz2-crumb" aria-label="Current location">
-              <span>Workspace</span>
-              <ChevronRight size={13} />
-              <strong>
-                {view === "document" && currentDoc ? <DocumentIcon icon={currentDoc.icon} size={14} /> : null}
-                {crumbLabel}
-              </strong>
-            </nav>
-          </div>
-          <div className="nz2-topbar-right">
-            <button type="button" className="nz2-search-pill" onClick={() => setSearchOpen(true)}>
-              <Search size={15} />
-              <span>Search notes, tasks, and more</span>
-              <kbd>⌘K</kbd>
-            </button>
-            <button type="button" className="nz2-btn nz2-btn-ghost nz2-btn-sm" onClick={() => openAI()} title="Ask NoteZ AI (⌘/)">
-              <Sparkles size={15} /> <span>Ask AI</span>
-            </button>
-            <button type="button" className="nz2-btn nz2-btn-primary nz2-btn-sm" onClick={() => void createDocument()} title="New page (⌘N)">
-              <Plus size={15} /> <span>New</span>
-            </button>
-            <button
-              type="button"
-              className="nz2-avatar nz2-avatar-btn"
-              onClick={() => navigate("settings")}
-              title="Settings"
-              aria-label="Settings"
-            >
-              {initials}
+            <button type="button" className="ed-iconbtn" aria-label="New page" onClick={() => void createDocument()}>
+              <Plus size={18} />
             </button>
           </div>
         </header>
@@ -599,26 +650,32 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
               voiceNotes={voiceNotes}
               runs={runs}
               onCreate={() => void createDocument()}
-              onOpen={openDocument}
+              onOpen={(id, withAi) => openDocument(id, withAi)}
               onNotes={() => navigate("notes")}
-              onAI={() => openAI()}
+              onAI={(prompt) => openAI(prompt)}
               onVoice={() => navigate("voice")}
               onTasks={() => navigate("tasks")}
               onToggleTask={toggleTask}
             />
           )}
 
-          {view === "tasks" && <WorkspaceTasks documents={documents} onToggle={toggleTask} onOpen={openDocument} />}
+          {view === "tasks" && (
+            <WorkspaceTasks
+              documents={documents}
+              onToggle={toggleTask}
+              onOpen={(id) => openDocument(id, false)}
+            />
+          )}
 
           {libraryViews.includes(view) && (
             <WorkspaceLibrary
               view={view}
               documents={documents}
               onCreate={() => void createDocument()}
-              onOpen={openDocument}
+              onOpen={(id) => openDocument(id, false)}
               onFavorite={(id, favorite) => update(id, { isFavorite: favorite })}
               onRestore={restore}
-              onDelete={(id) => void remove(id)}
+              onDelete={(id) => setDeleteDocumentId(id)}
             />
           )}
 
@@ -629,12 +686,21 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
               documents={documents}
               settings={user.settings}
               saveState={saveState}
+              aiSidebarOpen={noteAiSidebarOpen}
+              aiInitialPrompt={aiPrompt}
+              provider={provider}
+              runs={runs}
+              onRunsChange={setRuns}
+              onToggleAiSidebar={(force) =>
+                setNoteAiSidebarOpen((prev) => (typeof force === "boolean" ? force : !prev))
+              }
+              onApplyProposal={applyAiProposal}
+              onBeforeAsk={() => flush(currentDoc.id)}
               onChange={(patch) => update(currentDoc.id, patch)}
               onArchive={() => archive(currentDoc.id)}
               onDuplicate={() => void duplicate(currentDoc)}
               onCreateChild={() => void createDocument({ parentId: currentDoc.id })}
-              onOpen={openDocument}
-              onAI={() => openAI()}
+              onOpen={(id) => openDocument(id, false)}
               onNotice={notify}
             />
           )}
@@ -648,9 +714,10 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
               defaultScope={user.settings.defaultAiScope}
               initialPrompt={aiPrompt}
               onRunsChange={setRuns}
-              onOpen={openDocument}
+              onOpen={(id) => openDocument(id, false)}
               onCreate={(result) => void createAiNote(result)}
               onAppend={appendAi}
+              onApplyProposal={applyAiProposal}
               onVoice={() => navigate("voice")}
               onSettings={() => navigate("settings")}
               onNotice={notify}
@@ -665,7 +732,10 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
               onNotesChange={setVoiceNotes}
               onBusyChange={setVoiceBusy}
               onCreateNote={(note) => void createVoiceNote(note)}
-              onAskAI={(prompt) => openAI(prompt)}
+              onAskAI={(prompt) => {
+                setAiPrompt(prompt);
+                navigate("ai");
+              }}
               onSettings={() => navigate("settings")}
               onNotice={notify}
             />
@@ -681,27 +751,30 @@ export function WorkspaceApp({ initialUser, initialDocuments, initialPageId, pro
             />
           )}
         </main>
+
+        {/* Priority Mobile Bottom Navigation Bar */}
+        <MobileNavBar
+          currentView={view}
+          onNavigate={navigate}
+          onOpenSearch={() => setSearchOpen(true)}
+          onOpenMobileSidebar={() => setMobileNavOpen(true)}
+          activeNoteId={activeId}
+        />
       </div>
 
+      {/* Global Quick Search Modal */}
       {searchOpen && (
         <WorkspaceSearch
           documents={documents}
-          currentDoc={currentDoc}
           onClose={() => setSearchOpen(false)}
-          onOpen={openDocument}
+          onOpen={(id) => openDocument(id, false)}
           onCreate={() => void createDocument()}
           onAI={() => openAI()}
           onVoice={() => navigate("voice")}
         />
       )}
 
-      <MobileTabBar
-        view={view}
-        onView={(target) => navigate(target)}
-        onSearch={() => setSearchOpen(true)}
-        onMore={() => setMobileNavOpen(true)}
-        onCreate={() => void createDocument()}
-      />
+      {deleteDocumentId && <ConfirmationDialog title="Delete this page permanently?" description={`“${documents.find((item) => item.id === deleteDocumentId)?.title || "Untitled"}” and its saved versions will be removed. This can’t be undone.`} confirmLabel="Delete page" onCancel={() => setDeleteDocumentId(null)} onConfirm={() => remove(deleteDocumentId)} />}
 
       {toast && (
         <div className="nz-toast" role="status">

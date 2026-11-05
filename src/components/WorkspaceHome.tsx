@@ -1,7 +1,19 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { ArrowRight, AudioLines, CheckCircle2, Circle, FilePlus2, ListChecks, Mic, Sparkles, Clock3 } from "lucide-react";
+import {
+  ArrowRight,
+  AudioLines,
+  Check,
+  Circle,
+  FilePlus2,
+  ListChecks,
+  Lock,
+  Mic,
+  Plus,
+  Sparkles,
+  Star,
+} from "lucide-react";
 import type { AssistantHistoryItem, VoiceNote, WorkspaceDocument, WorkspaceUser } from "@/types/workspace";
 import { plainTextFromHtml } from "@/lib/markdown";
 import { formatRelativeTime } from "@/lib/format";
@@ -9,7 +21,7 @@ import { DocumentIcon } from "./Brand";
 import { collectTasks } from "./WorkspaceTasks";
 
 export function documentPreview(doc: WorkspaceDocument): string {
-  return doc.blocks.map((b) => plainTextFromHtml(b.content)).find(Boolean) || "A fresh page, ready for your thoughts.";
+  return doc.blocks.map((block) => plainTextFromHtml(block.content)).find((text) => text.trim()) || "Empty page";
 }
 
 interface Props {
@@ -18,20 +30,17 @@ interface Props {
   voiceNotes: VoiceNote[];
   runs: AssistantHistoryItem[];
   onCreate: () => void;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, openWithAiSidebar?: boolean) => void;
   onNotes: () => void;
-  onAI: () => void;
+  onAI: (prompt?: string) => void;
   onVoice: () => void;
   onTasks: () => void;
   onToggleTask: (docId: string, blockId: string, checked: boolean) => void;
 }
 
 function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 5) return "Up late";
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
+  const hour = new Date().getHours();
+  return hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 }
 
 export function WorkspaceHome({
@@ -48,236 +57,160 @@ export function WorkspaceHome({
   onToggleTask,
 }: Props) {
   const active = useMemo(
-    () => documents.filter((d) => !d.isArchived).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    () => documents.filter((doc) => !doc.isArchived).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [documents]
   );
-  const openTasks = useMemo(() => collectTasks(documents).filter((t) => !t.checked), [documents]);
-  const threadCount = useMemo(() => new Set(runs.map((r) => r.threadId || r.id)).size, [runs]);
-  const today = new Date().toDateString();
-  const editedToday = active.filter((d) => new Date(d.updatedAt).toDateString() === today).length;
-  const latest = active[0];
-  const firstName = user.name.split(" ")[0] || "there";
-
-  const summary = [
-    openTasks.length ? `${openTasks.length} open ${openTasks.length === 1 ? "task" : "tasks"}` : "No open tasks",
-    editedToday ? `${editedToday} ${editedToday === 1 ? "note" : "notes"} edited today` : "A clear day ahead",
-  ].join(" · ");
+  const favorites = useMemo(() => active.filter((doc) => doc.isFavorite).slice(0, 4), [active]);
+  const tasks = useMemo(() => collectTasks(documents).filter((task) => !task.checked), [documents]);
+  const name = user.name.trim().split(/\s+/)[0] || "there";
+  const date = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const recent = active.slice(0, 7);
 
   return (
-    <div className="nz2-page nz2-home">
-      <header className="nz2-hero">
+    <div className="ed-page ed-home">
+      <header className="ed-home-head">
         <div>
-          <span className="nz2-eyebrow">
-            <Clock3 size={13} /> {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-          </span>
-          <h1 className="nz2-title">
-            {greeting()}, {firstName}
-          </h1>
-          <p className="nz2-sub">{summary}.</p>
+          <span className="ed-eyebrow">{date}</span>
+          <h1>{greeting()}, {name}</h1>
+          <p>{active.length ? `${active.length} ${active.length === 1 ? "page" : "pages"} in your workspace.` : "Your workspace is ready for its first page."}</p>
         </div>
-        <div className="nz2-stats" aria-label="Workspace summary">
-          <button type="button" onClick={onNotes}>
-            <strong>{active.length}</strong>
-            <span>Notes</span>
+        <div className="ed-home-head-actions">
+          <button type="button" className="ed-btn ed-btn-ghost" onClick={onVoice} title="Record a voice note">
+            <Mic size={15} /> <span>Record</span>
           </button>
-          <button type="button" onClick={onTasks}>
-            <strong>{openTasks.length}</strong>
-            <span>Open tasks</span>
-          </button>
-          <button type="button" onClick={onVoice}>
-            <strong>{voiceNotes.length}</strong>
-            <span>Voice notes</span>
-          </button>
-          <button type="button" onClick={onAI}>
-            <strong>{threadCount}</strong>
-            <span>AI chats</span>
+          <button type="button" className="ed-btn ed-btn-primary" onClick={onCreate}>
+            <Plus /> <span>New page</span>
           </button>
         </div>
       </header>
 
-      <div className="nz2-quick">
-        <button type="button" className="nz2-quick-card" onClick={onCreate}>
-          <span className="nz2-quick-icon tone-indigo">
-            <FilePlus2 size={19} />
-          </span>
-          <strong>New note</strong>
-          <small>Start with a blank page</small>
-        </button>
-        <button type="button" className="nz2-quick-card" onClick={onVoice}>
-          <span className="nz2-quick-icon tone-rose">
-            <Mic size={19} />
-          </span>
-          <strong>Voice note</strong>
-          <small>Record, then structure it</small>
-        </button>
-        <button type="button" className="nz2-quick-card" onClick={onAI}>
-          <span className="nz2-quick-icon tone-teal">
-            <Sparkles size={19} />
-          </span>
-          <strong>Ask NoteZ AI</strong>
-          <small>Search notes and draft</small>
-        </button>
-        <button type="button" className="nz2-quick-card" onClick={onTasks}>
-          <span className="nz2-quick-icon tone-amber">
-            <ListChecks size={19} />
-          </span>
-          <strong>Review tasks</strong>
-          <small>{openTasks.length} open right now</small>
-        </button>
-      </div>
+      <div className="ed-home-body">
+        <section className="ed-panel" aria-labelledby="ed-recent-title">
+          <div className="ed-panel-head">
+            <h2 id="ed-recent-title">Recently edited</h2>
+            <button type="button" className="ed-link" onClick={onNotes}>
+              All notes <ArrowRight size={13} />
+            </button>
+          </div>
 
-      <div className="nz2-home-grid">
-        <div className="nz2-col-main">
-          {latest ? (
-            <section className="nz2-continue">
-              <div className="nz2-continue-copy">
-                <span className="nz2-eyebrow">Pick up where you left off</span>
-                <h2>
-                  <DocumentIcon icon={latest.icon} size={22} /> {latest.title || "Untitled"}
-                </h2>
-                <p>{documentPreview(latest)}</p>
-                <div className="nz2-continue-meta">
-                  <span>Edited {formatRelativeTime(latest.updatedAt)}</span>
-                  {latest.tags.slice(0, 3).map((t) => (
-                    <span key={t} className="nz2-tag">
-                      #{t}
+          {recent.length ? (
+            <ul className="ed-notelist">
+              {recent.map((doc) => (
+                <li key={doc.id} className="ed-noterow">
+                  <button type="button" className="ed-noterow-main" onClick={() => onOpen(doc.id)}>
+                    <span className="ed-noterow-icon">
+                      <DocumentIcon icon={doc.icon} size={16} />
                     </span>
-                  ))}
-                </div>
-                <button type="button" className="nz2-btn nz2-btn-primary" onClick={() => onOpen(latest.id)}>
-                  Continue writing <ArrowRight size={15} />
-                </button>
-              </div>
-              <div className="nz2-continue-art" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </div>
-            </section>
+                    <span className="ed-noterow-copy">
+                      <strong>
+                        {doc.title || "Untitled"}
+                        {doc.isConfidential && <Lock size={10} className="ed-lock" aria-label="Confidential" />}
+                        {doc.isFavorite && <Star size={10} className="ed-star" fill="currentColor" aria-label="Favorite" />}
+                      </strong>
+                      <small>{documentPreview(doc)}</small>
+                    </span>
+                    <span className="ed-noterow-meta">{formatRelativeTime(doc.updatedAt)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="ed-noterow-ai"
+                    title={`Ask AI about ${doc.title || "Untitled"}`}
+                    aria-label={`Ask AI about ${doc.title || "Untitled"}`}
+                    onClick={() => onOpen(doc.id, true)}
+                  >
+                    <Sparkles size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
           ) : (
-            <section className="nz2-empty">
-              <span className="nz2-empty-icon">
-                <FilePlus2 size={22} />
-              </span>
-              <h3>Your first page starts here</h3>
-              <p>Every great idea begins with a single line.</p>
-              <button type="button" className="nz2-btn nz2-btn-primary" onClick={onCreate}>
-                Create a page
+            <div className="ed-empty">
+              <FilePlus2 size={20} />
+              <strong>No pages yet</strong>
+              <p>Create a page to start writing. Everything saves automatically.</p>
+              <button type="button" className="ed-btn ed-btn-primary ed-btn-sm" onClick={onCreate}>
+                <Plus /> New page
               </button>
+            </div>
+          )}
+        </section>
+
+        <aside className="ed-home-aside">
+          {favorites.length > 0 && (
+            <section className="ed-panel" aria-labelledby="ed-fav-title">
+              <div className="ed-panel-head">
+                <h2 id="ed-fav-title">Favorites</h2>
+              </div>
+              <ul className="ed-minilist">
+                {favorites.map((doc) => (
+                  <li key={doc.id}>
+                    <button type="button" onClick={() => onOpen(doc.id)}>
+                      <DocumentIcon icon={doc.icon} size={14} />
+                      <span>{doc.title || "Untitled"}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
 
-          <div className="nz2-section-row">
-            <h2 className="nz2-section-title">Recent notes</h2>
-            <button type="button" className="nz2-link" onClick={onNotes}>
-              View all <ArrowRight size={14} />
-            </button>
-          </div>
-          <div className="nz2-note-grid">
-            {active.slice(1, 7).map((doc) => (
-              <button key={doc.id} type="button" className="nz2-note-card" onClick={() => onOpen(doc.id)}>
-                <span className="nz2-note-card-icon">
-                  <DocumentIcon icon={doc.icon} size={17} />
-                </span>
-                <strong>{doc.title || "Untitled"}</strong>
-                <p>{documentPreview(doc)}</p>
-                <small>{formatRelativeTime(doc.updatedAt)}</small>
-              </button>
-            ))}
-            {active.length <= 1 && <p className="nz2-empty-small">More notes will appear here as you write.</p>}
-          </div>
-        </div>
-
-        <aside className="nz2-col-side">
-          <section className="nz2-widget">
-            <div className="nz2-widget-head">
-              <h3>
-                <ListChecks size={16} /> Open tasks
-              </h3>
-              <button type="button" className="nz2-link" onClick={onTasks}>
-                All
+          <section className="ed-panel" aria-labelledby="ed-task-title">
+            <div className="ed-panel-head">
+              <h2 id="ed-task-title">Open tasks</h2>
+              <button type="button" className="ed-link" onClick={onTasks}>
+                View all
               </button>
             </div>
-            {openTasks.length ? (
-              <ul className="nz2-widget-list">
-                {openTasks.slice(0, 6).map((task) => (
+            {tasks.length ? (
+              <ul className="ed-tasklist">
+                {tasks.slice(0, 5).map((task) => (
                   <li key={task.blockId}>
                     <button
                       type="button"
-                      className="nz2-check"
-                      aria-label="Mark as done"
+                      className="ed-taskcheck"
+                      aria-label={`Complete ${task.text}`}
                       onClick={() => onToggleTask(task.docId, task.blockId, true)}
                     >
-                      {task.checked ? <CheckCircle2 size={17} /> : <Circle size={17} />}
+                      <Circle size={15} />
                     </button>
-                    <span>
-                      {task.text}
+                    <button type="button" className="ed-taskcopy" onClick={() => onOpen(task.docId)}>
+                      <strong>{task.text}</strong>
                       <small>{task.docTitle}</small>
-                    </span>
+                    </button>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="nz2-empty-small">All clear. Enjoy the quiet.</p>
+              <p className="ed-quiet">
+                <span className="ed-quiet-check"><Check size={13} /></span>
+                Nothing outstanding.
+              </p>
             )}
           </section>
 
-          <section className="nz2-widget">
-            <div className="nz2-widget-head">
-              <h3>
-                <Sparkles size={16} /> Recent AI chats
-              </h3>
-              <button type="button" className="nz2-link" onClick={onAI}>
-                Open
-              </button>
+          <section className="ed-panel">
+            <div className="ed-panel-head">
+              <h2>Shortcuts</h2>
             </div>
-            {runs.length ? (
-              <ul className="nz2-widget-list">
-                {runs.slice(0, 3).map((run) => (
-                  <li key={run.id}>
-                    <span className="nz2-widget-dot tone-teal">
-                      <Sparkles size={13} />
-                    </span>
-                    <span>
-                      {run.prompt.length > 70 ? `${run.prompt.slice(0, 70)}…` : run.prompt}
-                      <small>{formatRelativeTime(run.createdAt)}</small>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="nz2-empty-small">Ask a question and your conversations will live here.</p>
-            )}
-          </section>
-
-          <section className="nz2-widget">
-            <div className="nz2-widget-head">
-              <h3>
-                <AudioLines size={16} /> Voice notes
-              </h3>
-              <button type="button" className="nz2-link" onClick={onVoice}>
-                Open
-              </button>
-            </div>
-            {voiceNotes.length ? (
-              <ul className="nz2-widget-list">
-                {voiceNotes.slice(0, 3).map((note) => (
-                  <li key={note.id}>
-                    <span className="nz2-widget-dot tone-rose">
-                      <AudioLines size={13} />
-                    </span>
-                    <span>
-                      {note.title}
-                      <small>
-                        {note.structured ? "Structured" : "Transcript"} · {formatRelativeTime(note.createdAt)}
-                      </small>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="nz2-empty-small">Record a meeting or memo to see it here.</p>
-            )}
+            <ul className="ed-shortcutlist">
+              <li>
+                <button type="button" onClick={() => onAI()}>
+                  <Sparkles size={14} /> <span>Ask ByNote AI</span> <ListChecks size={12} className="ed-shortcut-tail" />
+                </button>
+              </li>
+              <li>
+                <button type="button" onClick={onVoice}>
+                  <AudioLines size={14} /> <span>Voice notes</span>
+                  {voiceNotes.length > 0 && <em>{voiceNotes.length}</em>}
+                </button>
+              </li>
+              <li>
+                <button type="button" onClick={onTasks}>
+                  <ListChecks size={14} /> <span>Tasks</span>
+                  {tasks.length > 0 && <em>{tasks.length}</em>}
+                </button>
+              </li>
+            </ul>
           </section>
         </aside>
       </div>

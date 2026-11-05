@@ -8,19 +8,12 @@ import {
   jsonb,
   index,
   uniqueIndex,
-  customType,
 } from "drizzle-orm/pg-core";
-
-/**
- * Postgres full-text search vector. Kept as a custom type so no native
- * extension is required; it is populated with to_tsvector() on write.
- */
-const tsvector = customType<{ data: string; driverData: string }>({
-  dataType: () => "tsvector",
-});
 import type { BlockProps, NoteBlock } from "@/types/notez";
 import type { AiDraftResult } from "@/types/ai";
 import type {
+  AiToolCallTrace,
+  AiToolProposal,
   AssistantResult,
   AssistantSource,
   VoiceSegment,
@@ -123,7 +116,7 @@ export const voiceSessions = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Authenticated workspace tables
+// Authenticated workspace tables (PostgreSQL)
 // ---------------------------------------------------------------------------
 
 export const workspaceUsers = pgTable("nz_users", {
@@ -165,6 +158,7 @@ export const workspaceDocuments = pgTable(
     blocks: jsonb("blocks").$type<NoteBlock[]>().notNull().default([]),
     isFavorite: boolean("is_favorite").notNull().default(false),
     isArchived: boolean("is_archived").notNull().default(false),
+    isConfidential: boolean("is_confidential").notNull().default(false),
     isAiGenerated: boolean("is_ai_generated").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -172,6 +166,29 @@ export const workspaceDocuments = pgTable(
   (table) => [
     index("nz_documents_user_idx").on(table.userId),
     index("nz_documents_parent_idx").on(table.parentId),
+    index("nz_documents_confidential_idx").on(table.isConfidential),
+  ]
+);
+
+export const workspaceDocumentVersions = pgTable(
+  "nz_document_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => workspaceDocuments.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => workspaceUsers.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default("Untitled"),
+    blocks: jsonb("blocks").$type<NoteBlock[]>().notNull().default([]),
+    wordCount: integer("word_count").notNull().default(0),
+    changeSummary: text("change_summary").notNull().default("Auto-saved version"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("nz_doc_versions_doc_idx").on(table.documentId),
+    index("nz_doc_versions_user_idx").on(table.userId),
   ]
 );
 
@@ -190,6 +207,8 @@ export const workspaceAssistantRuns = pgTable(
     title: text("title").notNull().default(""),
     blocks: jsonb("blocks").$type<AssistantResult["blocks"]>().notNull().default([]),
     sources: jsonb("sources").$type<AssistantSource[]>().notNull().default([]),
+    toolCalls: jsonb("tool_calls").$type<AiToolCallTrace[]>().notNull().default([]),
+    proposals: jsonb("proposals").$type<AiToolProposal[]>().notNull().default([]),
     provider: text("provider").notNull().default("basic"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -235,33 +254,31 @@ export const workspaceVoiceChunks = pgTable(
   (table) => [uniqueIndex("nz_voice_chunk_unique").on(table.voiceId, table.chunkIndex)]
 );
 
-/**
- * Unified search index for a user's content (notes, voice transcripts, AI answers).
- * Vectors live here for the always-available hybrid index and are mirrored to
- * Qdrant when it is configured. `search` is a generated full-text vector used
- * for SQL keyword ranking.
- */
-export const workspaceSearchChunks = pgTable(
-  "nz_search_chunks",
+export const workspaceVectors = pgTable(
+  "nz_vectors",
   {
-    id: text("id").primaryKey(),
+    id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
       .references(() => workspaceUsers.id, { onDelete: "cascade" }),
-    sourceType: text("source_type").notNull(),
-    sourceId: uuid("source_id").notNull(),
     documentId: uuid("document_id"),
+    voiceId: uuid("voice_id"),
+    chunkIndex: integer("chunk_index").notNull().default(0),
+    entityType: text("entity_type").notNull().default("document"), // 'document' | 'voice' | 'library'
     title: text("title").notNull().default(""),
     content: text("content").notNull().default(""),
-    chunkIndex: integer("chunk_index").notNull().default(0),
-    vector: jsonb("vector").$type<number[]>().notNull().default([]),
-    fingerprint: text("fingerprint").notNull().default(""),
+    isConfidential: boolean("is_confidential").notNull().default(false),
+    embedding: jsonb("embedding").$type<number[]>().notNull().default([]),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    qdrantPointId: text("qdrant_point_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    index("nz_search_user_idx").on(table.userId),
-    index("nz_search_source_idx").on(table.sourceType, table.sourceId),
-    index("nz_search_doc_idx").on(table.documentId),
+    index("nz_vectors_user_idx").on(table.userId),
+    index("nz_vectors_doc_idx").on(table.documentId),
+    index("nz_vectors_entity_idx").on(table.entityType),
+    index("nz_vectors_confidential_idx").on(table.isConfidential),
   ]
 );
 
@@ -273,3 +290,5 @@ export type AiRunRow = typeof aiRuns.$inferSelect;
 export type NewAiRunRow = typeof aiRuns.$inferInsert;
 export type VoiceSessionRow = typeof voiceSessions.$inferSelect;
 export type NewVoiceSessionRow = typeof voiceSessions.$inferInsert;
+export type DocumentVersionRow = typeof workspaceDocumentVersions.$inferSelect;
+export type VectorRow = typeof workspaceVectors.$inferSelect;

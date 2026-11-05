@@ -6,7 +6,6 @@ import { getSessionUser } from "@/lib/auth";
 import { geminiConfig, geminiJson } from "@/lib/gemini";
 import { labelSpeaker, sanitizeStructured, serializeVoice, validUuid } from "@/lib/workspace-server";
 import type { VoiceSegment, VoiceStructured } from "@/types/workspace";
-import { indexVoiceNote, queueIndex } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -104,6 +103,5 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     .where(and(eq(workspaceVoiceNotes.id, id), eq(workspaceVoiceNotes.userId, user.id)))
     .returning();
 
-  queueIndex(indexVoiceNote(user.id, id));
   return NextResponse.json({ note: serializeVoice(updated), provider });
 }

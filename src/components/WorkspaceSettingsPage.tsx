@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   AudioLines,
@@ -24,20 +24,34 @@ import {
   TriangleAlert,
   User,
   Lightbulb,
-  Type,
+  Lock,
+  Layers,
+  Server,
+  Zap,
 } from "lucide-react";
-import { ACCENTS, type AccentName, type AiScope, type EditorFont, type EditorWidth, type Density, type ThemePreference, type ProviderStatus, type WorkspaceSettings, type WorkspaceUser } from "@/types/workspace";
+import {
+  ACCENTS,
+  type AccentName,
+  type AiScope,
+  type EditorFont,
+  type EditorWidth,
+  type Density,
+  type ThemePreference,
+  type ProviderStatus,
+  type WorkspaceSettings,
+  type WorkspaceUser,
+} from "@/types/workspace";
 
-type Section = "profile" | "appearance" | "editor" | "ai" | "search" | "voice" | "data" | "danger";
+type Section = "profile" | "appearance" | "editor" | "database" | "ai" | "voice" | "data" | "danger";
 
 const SECTIONS: Array<{ id: Section; label: string; icon: LucideIcon }> = [
   { id: "profile", label: "Profile", icon: User },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "editor", label: "Editor", icon: Pencil },
+  { id: "database", label: "Databases & Qdrant", icon: Database },
   { id: "ai", label: "AI & privacy", icon: Bot },
-  { id: "search", label: "Search & memory", icon: Database },
   { id: "voice", label: "Voice", icon: AudioLines },
-  { id: "data", label: "Data & security", icon: Database },
+  { id: "data", label: "Data & security", icon: Shield },
   { id: "danger", label: "Danger zone", icon: TriangleAlert },
 ];
 
@@ -117,44 +131,15 @@ function Row({ title, detail, children }: { title: string; detail?: string; chil
 }
 
 export function WorkspaceSettingsPage({ user, provider, onUser, onSignOut, onNotice }: Props) {
-  const [section, setSection] = useState<Section>("appearance");
+  const [section, setSection] = useState<Section>("profile");
   const [name, setName] = useState(user.name);
   const [saving, setSaving] = useState(false);
   const [providerInfo, setProviderInfo] = useState(provider);
   const [checking, setChecking] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+  const [qdrantDetails, setQdrantDetails] = useState<any>(null);
   const [confirmText, setConfirmText] = useState("");
-  const [searchInfo, setSearchInfo] = useState<{
-    postgres: { connected: boolean; chunks: number };
-    qdrant: { configured: boolean; connected: boolean };
-    embeddings: { provider: string; model: string; dimension: number };
-    breakdown: { notes: number; voice: number; ai: number };
-  } | null>(null);
-  const [searchBusy, setSearchBusy] = useState(false);
   const s: WorkspaceSettings = user.settings;
-
-  async function loadSearchInfo() {
-    try {
-      const res = await fetch("/api/search/status");
-      if (res.ok) setSearchInfo(await res.json());
-    } catch {
-      // Leave previous values in place
-    }
-  }
-
-  async function reindex() {
-    setSearchBusy(true);
-    try {
-      const res = await fetch("/api/search/reindex", { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Reindex failed.");
-      onNotice(`Reindexed ${data.indexed.notes} notes, ${data.indexed.voice} voice notes, ${data.indexed.ai} AI answers`);
-      await loadSearchInfo();
-    } catch (err) {
-      onNotice(err instanceof Error ? err.message : "Reindex failed.");
-    } finally {
-      setSearchBusy(false);
-    }
-  }
 
   async function save(body: { name?: string; settings?: Partial<WorkspaceSettings> }, message = "Saved") {
     setSaving(true);
@@ -177,22 +162,38 @@ export function WorkspaceSettingsPage({ user, provider, onUser, onSignOut, onNot
 
   const setSetting = (patch: Partial<WorkspaceSettings>) => void save({ settings: patch }, "Preferences updated");
 
-  useEffect(() => {
-    if (section === "search") void loadSearchInfo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section]);
-
-  async function checkConnection() {
+  async function checkQdrantConnection() {
     setChecking(true);
     try {
-      const res = await fetch("/api/auth");
-      const data = await res.json();
-      if (data.provider) setProviderInfo(data.provider);
-      onNotice(data.provider?.configured ? "Gemini is connected" : "Gemini isn't configured on the server");
+      const res = await fetch("/api/qdrant/status");
+      if (res.ok) {
+        const data = await res.json();
+        setQdrantDetails(data);
+        setProviderInfo((previous) => ({ ...previous, qdrantConfigured: Boolean(data.connected), qdrantMode: data.mode || "postgres_vector", qdrantUrl: data.url || previous.qdrantUrl, vectorIndexedCount: data.pointsCount }));
+        onNotice(data.connected ? "Search service connected" : "Qdrant is unavailable; local search remains available");
+      }
     } catch {
-      onNotice("Couldn't reach the server");
+      onNotice("Couldn't reach vector engine endpoint");
     } finally {
       setChecking(false);
+    }
+  }
+
+  async function reindexAll() {
+    setReindexing(true);
+    try {
+      const res = await fetch("/api/qdrant/reindex", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        onNotice(`Indexed ${data.indexedDocuments} notes and ${data.indexedVoice} voice sessions`);
+        void checkQdrantConnection();
+      } else {
+        onNotice("Re-indexing failed");
+      }
+    } catch {
+      onNotice("Network error during re-indexing");
+    } finally {
+      setReindexing(false);
     }
   }
 
@@ -227,19 +228,19 @@ export function WorkspaceSettingsPage({ user, provider, onUser, onSignOut, onNot
   }
 
   return (
-    <div className="nz2-page nz2-settings-page">
+    <div className="nz2-page">
       <header className="nz2-page-head">
         <div>
-          <span className="nz2-eyebrow">Your preferences</span>
+          <span className="nz2-eyebrow">Workspace infrastructure</span>
           <h1 className="nz2-title">Settings</h1>
-          <p className="nz2-sub">Shape how NoteZ looks, writes, listens, and protects your notes.</p>
+          <p className="nz2-sub">Shape how ByNote stores notes, manages vector search with Qdrant, and protects your data.</p>
         </div>
       </header>
 
       <div className="nz2-settings">
         <nav className="nz2-settings-nav" aria-label="Settings sections">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" className={`${section === id ? "is-on" : ""} ${id === "danger" ? "is-danger" : ""}`} onClick={() => setSection(id)} aria-current={section === id ? "true" : undefined}>
+            <button key={id} type="button" className={`${section === id ? "is-on" : ""} ${id === "danger" ? "is-danger" : ""}`} onClick={() => setSection(id)} aria-label={label} title={label} aria-current={section === id ? "true" : undefined}>
               <Icon size={16} />
               <span>{label}</span>
             </button>
@@ -247,11 +248,142 @@ export function WorkspaceSettingsPage({ user, provider, onUser, onSignOut, onNot
         </nav>
 
         <div className="nz2-settings-body">
+          {/* Databases & Qdrant Section */}
+          {section === "database" && (
+            <section className="nz2-set-section">
+              <div className="nz2-set-head">
+                <h2>Databases & Vector Engine</h2>
+                <p>ByNote runs on dual engines: PostgreSQL for durable document/session storage and Qdrant for semantic vector search.</p>
+              </div>
+
+              {/* PostgreSQL Card */}
+              <div className="nz2-set-group">
+                <div className="nz2-infra-card">
+                  <div className="nz2-infra-head">
+                    <span className="nz2-infra-icon pg">
+                      <Database size={18} />
+                    </span>
+                    <div>
+                      <strong>PostgreSQL (Relational Store)</strong>
+                      <small>Connected · Database: <code>app_db</code></small>
+                    </div>
+                    <span className="nz2-status-pill online">
+                      <span className="nz2-dot is-on" /> Active
+                    </span>
+                  </div>
+                  <p className="nz2-infra-desc">
+                    Stores users, encrypted sessions, notes, versions, checklists, and voice transcripts.
+                  </p>
+                  <div className="nz2-infra-grid">
+                    <div>
+                      <span>Schema Tables</span>
+                      <strong><code>nz_documents</code>, <code>nz_users</code>, <code>nz_document_versions</code></strong>
+                    </div>
+                    <div>
+                      <span>Keyword Search</span>
+                      <strong>SQL In-Note Exact & ILIKE matching</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Qdrant Card */}
+              <div className="nz2-set-group">
+                <div className="nz2-infra-card">
+                  <div className="nz2-infra-head">
+                    <span className="nz2-infra-icon qdrant">
+                      <Zap size={18} />
+                    </span>
+                    <div>
+                      <strong>Qdrant Vector Database</strong>
+                      <small>Collection: <code>notez_vectors</code> · Metric: Cosine (128-d)</small>
+                    </div>
+                    <span className={`nz2-status-pill ${providerInfo.qdrantConfigured ? "online" : "standby"}`}>
+                      <span className={`nz2-dot ${providerInfo.qdrantConfigured ? "is-on" : ""}`} />
+                      {providerInfo.qdrantConfigured ? "Qdrant connected" : "Local search available"}
+                    </span>
+                  </div>
+                  <p className="nz2-infra-desc">
+                    Generates dense semantic embeddings for documents, library notes, and voice transcripts. If an external Qdrant container is not reachable, ByNote's integrated PostgreSQL vector store transparently handles all semantic search requests with identical vector math.
+                  </p>
+                  <div className="nz2-infra-grid">
+                    <div>
+                      <span>Configured Endpoint</span>
+                      <strong><code>{provider.qdrantUrl || "http://localhost:6333"}</code></strong>
+                    </div>
+                    <div>
+                      <span>Active Engine Mode</span>
+                      <strong>{providerInfo.qdrantConfigured ? "Qdrant" : "Local vector search"}</strong>
+                    </div>
+                  </div>
+
+                  <div className="nz2-infra-actions">
+                    <button
+                      type="button"
+                      className="nz2-btn nz2-btn-soft nz2-btn-sm"
+                      onClick={() => void checkQdrantConnection()}
+                      disabled={checking}
+                    >
+                      {checking ? <LoaderCircle size={14} className="nz-spin" /> : <RefreshCw size={14} />}
+                      Test Qdrant Connection
+                    </button>
+                    <button
+                      type="button"
+                      className="nz2-btn nz2-btn-ghost nz2-btn-sm"
+                      onClick={() => void reindexAll()}
+                      disabled={reindexing}
+                    >
+                      {reindexing ? <LoaderCircle size={14} className="nz-spin" /> : <Zap size={14} />}
+                      Re-index All Notes into Vectors
+                    </button>
+                  </div>
+
+                  {qdrantDetails && (
+                    <div className="nz2-infra-details">
+                      <span>Status Message: {qdrantDetails.message}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Privacy and Confidentiality Rules */}
+              <div className="nz2-set-group">
+                <span className="nz2-group-title">Confidentiality & Vector Search Filters</span>
+                <Row
+                  title="Exclude confidential notes from vector search"
+                  detail="Notes marked as confidential are excluded from workspace AI search by default."
+                >
+                  <Toggle
+                    label="Exclude confidential notes from search"
+                    checked={s.excludeConfidentialFromSearch !== false}
+                    onChange={(v) => setSetting({ excludeConfidentialFromSearch: v })}
+                  />
+                </Row>
+              </div>
+
+              {/* FastAPI Microservice Architecture */}
+              <div className="nz2-set-group">
+                <div className="nz2-infra-head">
+                  <span className="nz2-infra-icon api">
+                    <Server size={18} />
+                  </span>
+                  <div>
+                    <strong>FastAPI Bridge & Docker Services</strong>
+                    <small>Microservice bridge configured in <code>fastapi_app/</code> & <code>docker-compose.yml</code></small>
+                  </div>
+                </div>
+                <p className="nz2-infra-desc">
+                  Run <code>docker compose up</code> to launch PostgreSQL, Qdrant, and FastAPI simultaneously. ByNote automatically connects and routes vector search and RAG queries.
+                </p>
+              </div>
+            </section>
+          )}
+
           {section === "profile" && (
             <section className="nz2-set-section">
               <div className="nz2-set-head">
                 <h2>Profile</h2>
-                <p>How your name appears across NoteZ.</p>
+                <p>How your name appears across ByNote.</p>
               </div>
               <div className="nz2-profile-card">
                 <span className="nz2-avatar nz2-avatar-lg">{user.name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase()}</span>
@@ -387,7 +519,7 @@ export function WorkspaceSettingsPage({ user, provider, onUser, onSignOut, onNot
             <section className="nz2-set-section">
               <div className="nz2-set-head">
                 <h2>AI & privacy</h2>
-                <p>Control what NoteZ AI can see, and how it's connected.</p>
+                <p>Control what ByNote AI can see, and how it's connected.</p>
               </div>
               <div className="nz2-status-card">
                 <span className={`nz2-status-orb ${providerInfo.configured ? "is-on" : ""}`}>
@@ -398,12 +530,9 @@ export function WorkspaceSettingsPage({ user, provider, onUser, onSignOut, onNot
                   <p>
                     {providerInfo.configured
                       ? `Generating answers and transcribing with ${providerInfo.model}.`
-                      : "NoteZ can search your notes and list tasks. Add GEMINI_API_KEY on the server to enable generated answers and voice structuring."}
+                      : "ByNote can search your notes and list tasks. Add GEMINI_API_KEY on the server to enable generated answers and voice structuring."}
                   </p>
                 </div>
-                <button type="button" className="nz2-btn nz2-btn-soft nz2-btn-sm" onClick={() => void checkConnection()} disabled={checking}>
-                  {checking ? <LoaderCircle size={14} className="nz-spin" /> : <RefreshCw size={14} />} Check connection
-                </button>
               </div>
               <div className="nz2-set-group">
                 <Row title="Default context" detail="Which notes AI reads when you start a new chat.">
@@ -423,7 +552,13 @@ export function WorkspaceSettingsPage({ user, provider, onUser, onSignOut, onNot
                 <li>
                   <ShieldCheck size={16} />
                   <span>
-                    <strong>You choose the context.</strong> Only the notes you select are shared with the model, and only for that reply.
+                    <strong>Semantic Search & RAG.</strong> ByNote uses Qdrant vector embeddings to retrieve relevant context.
+                  </span>
+                </li>
+                <li>
+                  <Lock size={16} />
+                  <span>
+                    <strong>Confidentiality protection.</strong> Notes marked confidential are excluded from workspace search by default.
                   </span>
                 </li>
                 <li>
@@ -435,55 +570,10 @@ export function WorkspaceSettingsPage({ user, provider, onUser, onSignOut, onNot
                 <li>
                   <KeyRound size={16} />
                   <span>
-                    <strong>Keys stay on the server.</strong> Your Gemini key is never sent to the browser.
+                    <strong>Keys stay on the server.</strong> Your Gemini and Qdrant keys are never exposed to the client bundle.
                   </span>
                 </li>
               </ul>
-            </section>
-          )}
-
-          {section === "search" && (
-            <section className="nz2-set-section">
-              <div className="nz2-set-head">
-                <h2>Search & memory</h2>
-                <p>How NoteZ finds things across everything you've written, recorded, and asked.</p>
-              </div>
-              <div className="nz2-status-card">
-                <span className={`nz2-status-orb ${searchInfo?.postgres.connected ? "is-on" : ""}`}>
-                  <Database size={18} />
-                </span>
-                <div>
-                  <strong>Postgres index · {searchInfo?.postgres.chunks ?? 0} passages</strong>
-                  <p>
-                    {searchInfo
-                      ? `${searchInfo.breakdown.notes} from notes · ${searchInfo.breakdown.voice} from voice transcripts · ${searchInfo.breakdown.ai} from AI answers`
-                      : "Reading index status…"}
-                  </p>
-                </div>
-                <button type="button" className="nz2-btn nz2-btn-soft nz2-btn-sm" onClick={() => void reindex()} disabled={searchBusy}>
-                  {searchBusy ? <LoaderCircle size={14} className="nz-spin" /> : <RefreshCw size={14} />} Rebuild index
-                </button>
-              </div>
-              <div className="nz2-set-group">
-                <Row title="Vector database" detail="Qdrant is used for semantic search when configured; the Postgres index is always available as a fallback.">
-                  <span className={`nz2-chip ${searchInfo?.qdrant.connected ? "is-good" : ""}`}>
-                    <span className={`nz2-dot ${searchInfo?.qdrant.connected ? "is-on" : ""}`} />
-                    {searchInfo?.qdrant.connected ? "Qdrant connected" : searchInfo?.qdrant.configured ? "Qdrant unreachable" : "Qdrant not configured"}
-                  </span>
-                </Row>
-                <Row title="Embeddings" detail="Set GEMINI_API_KEY to use gemini-embedding-001. Without it, NoteZ uses a local 384-dimension projection.">
-                  <span className="nz2-chip">
-                    {searchInfo ? `${searchInfo.embeddings.provider} · ${searchInfo.embeddings.dimension}d` : "…"}
-                  </span>
-                </Row>
-                <Row title="In-note search" detail="Press ⌘F in any note for instant keyword search within that note.">
-                  <span className="nz2-chip">Keyword · SQL</span>
-                </Row>
-              </div>
-              <div className="nz2-callout">
-                <Shield size={16} />
-                <span>Search only ever returns your own content. Other accounts, and NoteZ's own code and configuration, are never included in your index.</span>
-              </div>
             </section>
           )}
 

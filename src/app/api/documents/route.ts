@@ -5,7 +5,6 @@ import { db } from "@/db";
 import { workspaceDocuments } from "@/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { normalizeBlocks, serializeDocument, validUuid } from "@/lib/workspace-server";
-import { indexDocument, queueIndex } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 export async function GET() {
@@ -28,9 +27,35 @@ export async function POST(request: NextRequest) {
     const id = randomUUID();
     const incoming = normalizeBlocks(body.blocks, id);
     const initial = incoming.length ? incoming : normalizeBlocks([{ type: "paragraph", content: "", props: {} }], id);
-    const [row] = await db.insert(workspaceDocuments).values({ id, userId: user.id, parentId, title: typeof body.title === "string" ? body.title.trim().slice(0, 180) : "Untitled", icon: typeof body.icon === "string" ? body.icon.slice(0, 30) : "file", cover: typeof body.cover === "string" ? body.cover.slice(0, 30) : null, blocks: initial, isAiGenerated: body.isAiGenerated === true }).returning();
-    queueIndex(indexDocument(user.id, row.id));
-    return NextResponse.json({ document: serializeDocument(row) }, { status: 201 });
+    const isConfidential = Boolean(body.isConfidential);
+    const tags = Array.isArray(body.tags)
+      ? body.tags.filter((t: unknown): t is string => typeof t === "string").map((t: string) => t.trim().replace(/^#/, "").slice(0, 24)).filter(Boolean).slice(0, 8)
+      : [];
+
+    const [row] = await db.insert(workspaceDocuments).values({
+      id,
+      userId: user.id,
+      parentId,
+      title: typeof body.title === "string" ? body.title.trim().slice(0, 180) : "Untitled",
+      icon: typeof body.icon === "string" ? body.icon.slice(0, 30) : "file",
+      cover: typeof body.cover === "string" ? body.cover.slice(0, 30) : null,
+      tags,
+      blocks: initial,
+      isConfidential,
+      isAiGenerated: body.isAiGenerated === true,
+    }).returning();
+
+    const doc = serializeDocument(row);
+
+    // Auto-index into Qdrant & Vector store
+    try {
+      const { indexDocumentVector } = await import("@/lib/qdrant");
+      void indexDocumentVector(doc, user.id);
+    } catch {
+      // background index
+    }
+
+    return NextResponse.json({ document: doc }, { status: 201 });
   } catch (error) {
     console.error("Create document:", error);
     return NextResponse.json({ error: "Could not create your note." }, { status: 500 });

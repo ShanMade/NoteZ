@@ -14,17 +14,29 @@ import {
   Maximize2,
   MoreHorizontal,
   Pencil,
-  PanelRight,
   Plus,
   Sparkles,
   Star,
+  Bot,
   Trash2,
-  Search,
   X,
-  ArrowUp,
-  ArrowDown,
+  Search,
+  ChevronUp,
+  ChevronDown,
+  Lock,
+  History,
+  RotateCcw,
+  ShieldCheck,
+  Check,
 } from "lucide-react";
-import type { WorkspaceDocument, WorkspaceSettings } from "@/types/workspace";
+import type {
+  WorkspaceDocument,
+  WorkspaceSettings,
+  DocumentVersion,
+  ProviderStatus,
+  AssistantHistoryItem,
+  AiToolProposal,
+} from "@/types/workspace";
 import type { BlockProps, BlockType, NoteBlock, NotePage } from "@/types/notez";
 import { plainTextFromHtml, serializePageToMarkdown } from "@/lib/markdown";
 import { formatRelativeTime } from "@/lib/format";
@@ -32,6 +44,8 @@ import { newId } from "@/lib/ids";
 import { BlockItem } from "./BlockItem";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { InlineFormatToolbar } from "./InlineFormatToolbar";
+import { NoteAISidebar } from "./NoteAISidebar";
+import { ConfirmationDialog } from "./ConfirmationDialog";
 import { DocumentIcon } from "./Brand";
 
 const ICONS = ["file", "book", "calendar", "compass", "lightbulb", "folder", "sparkles", "clipboard", "briefcase", "rocket"];
@@ -48,12 +62,19 @@ interface Props {
   documents: WorkspaceDocument[];
   settings: Pick<WorkspaceSettings, "editorWidth" | "editorFont" | "spellcheck">;
   saveState: "saved" | "saving" | "error";
+  aiSidebarOpen: boolean;
+  aiInitialPrompt?: string;
+  provider: ProviderStatus;
+  runs: AssistantHistoryItem[];
+  onRunsChange: (updater: (prev: AssistantHistoryItem[]) => AssistantHistoryItem[]) => void;
+  onToggleAiSidebar: (open?: boolean) => void;
+  onApplyProposal: (proposal: AiToolProposal) => Promise<void>;
+  onBeforeAsk: () => Promise<void>;
   onChange: (patch: Partial<WorkspaceDocument>) => void;
   onArchive: () => void;
   onDuplicate: () => void;
   onCreateChild: () => void;
   onOpen: (id: string) => void;
-  onAI: () => void;
   onNotice: (message: string) => void;
 }
 
@@ -117,26 +138,40 @@ export function WorkspaceEditor({
   documents,
   settings,
   saveState,
+  aiSidebarOpen,
+  aiInitialPrompt = "",
+  provider,
+  runs,
+  onRunsChange,
+  onToggleAiSidebar,
+  onApplyProposal,
+  onBeforeAsk,
   onChange,
   onArchive,
   onDuplicate,
   onCreateChild,
   onOpen,
-  onAI,
   onNotice,
 }: Props) {
   const [readOnly, setReadOnly] = useState(false);
   const [focus, setFocus] = useState(false);
-  const [outline, setOutline] = useState(true);
-  const [menu, setMenu] = useState<null | "more" | "icon" | "cover">(null);
+  const [outline, setOutline] = useState(false);
+  const [menu, setMenu] = useState<null | "more" | "icon" | "cover" | "history">(null);
   const [slash, setSlash] = useState<{ id: string; query: string; rect: { top: number; left: number; bottom: number } } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [tagDraft, setTagDraft] = useState("");
+
+  // In-Note SQL Keyword Search State
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
-  const [findIndex, setFindIndex] = useState(0);
+  const [findMatchIndex, setFindMatchIndex] = useState(0);
+  const [versions, setVersions] = useState<DocumentVersion[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [restoreVersionId, setRestoreVersionId] = useState<string | null>(null);
+
   const focusMap = useRef(new Map<string, HTMLElement>());
   const blocksRef = useRef(doc.blocks);
+  const findInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     blocksRef.current = doc.blocks;
@@ -147,6 +182,8 @@ export function WorkspaceEditor({
     setMenu(null);
     setSlash(null);
     setFocus(false);
+    setFindOpen(false);
+    setFindQuery("");
   }, [doc.id]);
 
   useEffect(() => {
@@ -158,24 +195,114 @@ export function WorkspaceEditor({
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
+  // Keyboard shortcut ⌘F to find in note, ⌘. for focus mode
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === ".") {
-        event.preventDefault();
-        setFocus((v) => !v);
-      } else if (event.key === "Escape" && focus) {
-        setFocus(false);
-      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
         setFindOpen(true);
-      } else if (event.key === "Escape" && findOpen) {
-        setFindOpen(false);
+        setTimeout(() => findInputRef.current?.focus(), 60);
+      } else if ((event.metaKey || event.ctrlKey) && event.key === ".") {
+        event.preventDefault();
+        setFocus((v) => !v);
+      } else if (event.key === "Escape") {
+        if (findOpen) {
+          setFindOpen(false);
+        } else if (focus) {
+          setFocus(false);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [focus, findOpen]);
+
+  // Load versions when history tab opened
+  const loadVersions = async () => {
+    setLoadingVersions(true);
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/versions`);
+      if (res.ok) {
+        const data = await res.json();
+        setVersions(data.versions || []);
+      }
+    } catch {
+      // network
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const rollbackToVersion = async (verId: string) => {
+    await onBeforeAsk();
+    const res = await fetch(`/api/documents/${doc.id}/versions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rollbackVersionId: verId }),
+    });
+    if (!res.ok) throw new Error("Couldn't restore this version. Please try again.");
+    const data = await res.json();
+    if (data.document) onChange({ title: data.document.title, blocks: data.document.blocks });
+    setMenu(null);
+    onNotice("Version restored");
+  };
+
+  const createCheckpoint = async () => {
+    try {
+      await onBeforeAsk();
+      const res = await fetch(`/api/documents/${doc.id}/versions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summary: "Manual checkpoint snapshot" }),
+      });
+      if (res.ok) {
+        void loadVersions();
+        onNotice("Version checkpoint saved");
+      }
+    } catch {
+      onNotice("Failed to save checkpoint");
+    }
+  };
+
+  // In-Note Search matching blocks computation
+  const matchingBlockIds = useMemo(() => {
+    if (!findQuery.trim()) return [];
+    const qLower = findQuery.toLowerCase();
+    return doc.blocks
+      .filter((b) => plainTextFromHtml(b.content || "").toLowerCase().includes(qLower))
+      .map((b) => b.id);
+  }, [doc.blocks, findQuery]);
+
+  useEffect(() => {
+    setFindMatchIndex(0);
+  }, [findQuery]);
+
+  const scrollToMatch = (index: number) => {
+    if (matchingBlockIds.length === 0) return;
+    const targetId = matchingBlockIds[index % matchingBlockIds.length];
+    const el = document.getElementById(`block-${targetId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.remove("nz2-highlight-pulse");
+      void el.offsetWidth;
+      el.classList.add("nz2-highlight-pulse");
+      setTimeout(() => el.classList.remove("nz2-highlight-pulse"), 1600);
+    }
+  };
+
+  const nextMatch = () => {
+    if (matchingBlockIds.length === 0) return;
+    const nextIdx = (findMatchIndex + 1) % matchingBlockIds.length;
+    setFindMatchIndex(nextIdx);
+    scrollToMatch(nextIdx);
+  };
+
+  const prevMatch = () => {
+    if (matchingBlockIds.length === 0) return;
+    const prevIdx = (findMatchIndex - 1 + matchingBlockIds.length) % matchingBlockIds.length;
+    setFindMatchIndex(prevIdx);
+    scrollToMatch(prevIdx);
+  };
 
   const crumbs = useMemo(() => {
     const byId = new Map(documents.map((d) => [d.id, d]));
@@ -320,21 +447,6 @@ export function WorkspaceEditor({
     return doc.blocks.map((b) => (b.type === "numbered" ? ++count : (count = 0)));
   }, [doc.blocks]);
 
-  const findMatches = useMemo(() => {
-    const q = findQuery.trim().toLowerCase();
-    if (q.length < 2) return [];
-    return doc.blocks
-      .filter((b) => plainTextFromHtml(b.content).toLowerCase().includes(q))
-      .map((b) => b.id);
-  }, [doc.blocks, findQuery]);
-
-  const jumpToMatch = (index: number) => {
-    if (!findMatches.length) return;
-    const bounded = ((index % findMatches.length) + findMatches.length) % findMatches.length;
-    setFindIndex(bounded);
-    document.getElementById(`block-${findMatches[bounded]}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
-
   const exportMarkdown = () => {
     const page: NotePage = {
       id: doc.id,
@@ -386,6 +498,7 @@ export function WorkspaceEditor({
 
   return (
     <div className={`nz2-editor ${focus ? "is-focus" : ""}`} data-font={settings.editorFont}>
+      {/* Sticky Toolbar */}
       <div className="nz2-editor-bar">
         <nav className="nz2-crumbs" aria-label="Breadcrumb">
           {crumbs.map((c, i) => (
@@ -409,43 +522,51 @@ export function WorkspaceEditor({
             <i />
             {saveState === "saving" ? "Saving…" : saveState === "error" ? "Not saved" : "Saved"}
           </span>
-          <div className="nz2-seg" role="group" aria-label="View mode">
-            <button type="button" className={!readOnly ? "is-on" : ""} onClick={() => setReadOnly(false)}>
-              <Pencil size={13} /> Edit
-            </button>
-            <button type="button" className={readOnly ? "is-on" : ""} onClick={() => setReadOnly(true)}>
-              <Eye size={13} /> Read
-            </button>
-          </div>
+
+          {/* In-note find */}
           <button
             type="button"
-            className={`nz2-icon-btn ${focus ? "is-on" : ""}`}
-            title="Focus mode (⌘.)"
-            aria-pressed={focus}
-            onClick={() => setFocus((v) => !v)}
+            className={`nz2-icon-btn ${findOpen ? "is-on" : ""}`}
+            title="Find in this note (⌘F)"
+            aria-label="Find in note"
+            onClick={() => {
+              setFindOpen(!findOpen);
+              if (!findOpen) setTimeout(() => findInputRef.current?.focus(), 60);
+            }}
           >
-            <Maximize2 size={16} />
+            <Search size={15} />
           </button>
+
+          {/* Read mode toggle — one clear state, no segmented clutter */}
           <button
             type="button"
-            className={`nz2-icon-btn ${outline ? "is-on" : ""}`}
-            title={outline ? "Hide outline" : "Show outline"}
-            aria-pressed={outline}
-            onClick={() => setOutline((v) => !v)}
+            className={`nz2-icon-btn ${readOnly ? "is-on" : ""}`}
+            title={readOnly ? "Back to editing" : "Reading view"}
+            aria-pressed={readOnly}
+            onClick={() => setReadOnly((value) => !value)}
           >
-            <PanelRight size={16} />
+            {readOnly ? <Pencil size={15} /> : <Eye size={15} />}
           </button>
-          <button type="button" className="nz2-btn nz2-btn-soft nz2-btn-sm" onClick={onAI}>
-            <Sparkles size={14} /> Ask AI
+
+          <button
+            type="button"
+            className={`nz2-btn ${aiSidebarOpen ? "nz2-btn-primary" : "nz2-btn-soft"} nz2-btn-sm nz2-ai-trigger`}
+            aria-pressed={aiSidebarOpen}
+            onClick={() => onToggleAiSidebar()}
+          >
+            <Bot size={15} /> <span>Ask AI</span>
           </button>
+
           <button
             type="button"
             className={`nz2-icon-btn ${doc.isFavorite ? "is-fav" : ""}`}
             title={doc.isFavorite ? "Remove from favorites" : "Add to favorites"}
+            aria-label="Toggle favorite"
             onClick={() => onChange({ isFavorite: !doc.isFavorite })}
           >
             <Star size={16} fill={doc.isFavorite ? "currentColor" : "none"} />
           </button>
+
           <div className="nz2-pop-wrap" data-pop-root>
             <button
               type="button"
@@ -459,11 +580,33 @@ export function WorkspaceEditor({
             </button>
             {menu === "more" && (
               <div className="nz2-popover nz2-popover-right" role="menu">
+                <button type="button" role="menuitem" onClick={() => { setReadOnly((previous) => !previous); setMenu(null); }}>
+                  {readOnly ? <Pencil size={15} /> : <Eye size={15} />} {readOnly ? "Back to editing" : "Reading view"}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const next = !doc.isConfidential;
+                    onChange({ isConfidential: next });
+                    onNotice(next ? "Marked confidential — excluded from AI search" : "Removed confidential protection");
+                    setMenu(null);
+                  }}
+                >
+                  <Lock size={15} /> {doc.isConfidential ? "Remove confidential" : "Mark confidential"}
+                </button>
+                <button type="button" role="menuitem" onClick={() => { onChange({ isFavorite: !doc.isFavorite }); setMenu(null); }}><Star size={15} /> {doc.isFavorite ? "Remove favorite" : "Add to favorites"}</button>
+                <button type="button" role="menuitem" onClick={() => { setFocus((previous) => !previous); setMenu(null); }}><Maximize2 size={15} /> {focus ? "Exit focus mode" : "Focus mode"}</button>
+                <button type="button" role="menuitem" onClick={() => { setOutline((previous) => !previous); setMenu(null); }}><ListTree size={15} /> {outline ? "Hide outline" : "Show outline"}</button>
+                <div className="nz2-menu-sep" />
                 <button type="button" role="menuitem" onClick={() => { setMenu(null); onCreateChild(); }}>
                   <FilePlus2 size={15} /> Add subpage
                 </button>
                 <button type="button" role="menuitem" onClick={() => { setMenu(null); onDuplicate(); }}>
                   <Copy size={15} /> Duplicate
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setMenu("history"); void loadVersions(); }}>
+                  <History size={15} /> Version history
                 </button>
                 <button type="button" role="menuitem" onClick={copyLink}>
                   <Link2 size={15} /> Copy link
@@ -477,50 +620,100 @@ export function WorkspaceEditor({
                 </button>
               </div>
             )}
+
+            {/* Version History Drawer Popover */}
+            {menu === "history" && (
+              <div className="nz2-popover nz2-history-pop" role="menu">
+                <div className="nz2-history-pop-head">
+                  <strong>Version Checkpoints</strong>
+                  <button type="button" className="nz2-btn nz2-btn-soft nz2-btn-sm" onClick={createCheckpoint}>
+                    <Plus size={12} /> Save checkpoint
+                  </button>
+                </div>
+                <div className="nz2-history-list">
+                  {loadingVersions ? (
+                    <div className="nz2-loading-p">Loading versions…</div>
+                  ) : versions.length === 0 ? (
+                    <div className="nz2-empty-p">No saved checkpoints yet. Click Save checkpoint above.</div>
+                  ) : (
+                    versions.map((ver) => (
+                      <div key={ver.id} className="nz2-history-item">
+                        <div>
+                          <strong>{ver.changeSummary}</strong>
+                          <small>{formatRelativeTime(ver.createdAt)} · {ver.wordCount} words</small>
+                        </div>
+                        <button
+                          type="button"
+                          className="nz2-btn nz2-btn-ghost nz2-btn-sm"
+                          onClick={() => setRestoreVersionId(ver.id)}
+                          title="Restore this version"
+                        >
+                          <RotateCcw size={12} /> Restore
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Floating In-Note SQL Keyword Search Bar */}
       {findOpen && (
-        <div className="nz3-find" role="search">
-          <Search size={14} />
+        <div className="nz2-find-bar animate-in fade-in slide-in-from-top-2">
+          <Search size={15} className="nz2-find-icon" />
           <input
-            autoFocus
+            ref={findInputRef}
             value={findQuery}
-            onChange={(e) => {
-              setFindQuery(e.target.value);
-              setFindIndex(0);
-            }}
+            onChange={(e) => setFindQuery(e.target.value)}
+            placeholder="Search keywords in this note..."
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                jumpToMatch(e.shiftKey ? findIndex - 1 : findIndex + 1);
-              } else if (e.key === "Escape") {
-                setFindOpen(false);
+                if (e.shiftKey) prevMatch();
+                else nextMatch();
               }
             }}
-            placeholder="Find words in this note…"
-            aria-label="Find in note"
           />
-          <span className="nz3-find-count">
-            {findQuery.trim().length < 2
-              ? "Type to search"
-              : findMatches.length
-                ? `${findIndex + 1} of ${findMatches.length}`
-                : "No matches"}
+          <span className="nz2-find-count">
+            {matchingBlockIds.length > 0
+              ? `${findMatchIndex + 1} of ${matchingBlockIds.length}`
+              : findQuery.trim()
+                ? "No matches"
+                : ""}
           </span>
-          <button type="button" className="nz2-icon-btn" onClick={() => jumpToMatch(findIndex - 1)} aria-label="Previous match" disabled={!findMatches.length}>
-            <ArrowUp size={15} />
+          <button
+            type="button"
+            className="nz2-icon-btn nz2-find-btn"
+            disabled={matchingBlockIds.length === 0}
+            onClick={prevMatch}
+            title="Previous match (Shift+Enter)"
+          >
+            <ChevronUp size={15} />
           </button>
-          <button type="button" className="nz2-icon-btn" onClick={() => jumpToMatch(findIndex + 1)} aria-label="Next match" disabled={!findMatches.length}>
-            <ArrowDown size={15} />
+          <button
+            type="button"
+            className="nz2-icon-btn nz2-find-btn"
+            disabled={matchingBlockIds.length === 0}
+            onClick={nextMatch}
+            title="Next match (Enter)"
+          >
+            <ChevronDown size={15} />
           </button>
-          <button type="button" className="nz2-icon-btn" onClick={() => setFindOpen(false)} aria-label="Close find">
-            <X size={15} />
+          <button
+            type="button"
+            className="nz2-icon-btn nz2-find-close"
+            onClick={() => setFindOpen(false)}
+            title="Close find (ESC)"
+          >
+            <X size={14} />
           </button>
         </div>
       )}
 
+      {/* Document Body */}
       <div className="nz2-editor-body">
         <div className="nz2-doc-scroll">
           <article className={`nz2-doc nz2-width-${settings.editorWidth}`} spellCheck={settings.spellcheck}>
@@ -754,7 +947,7 @@ export function WorkspaceEditor({
           </article>
         </div>
 
-        {outline && !focus && (
+        {outline && !focus && !aiSidebarOpen && (
           <aside className="nz2-outline" aria-label="Outline">
             <div className="nz2-outline-head">
               <ListTree size={15} /> On this page
@@ -808,15 +1001,41 @@ export function WorkspaceEditor({
               </div>
             </dl>
 
-            <button type="button" className="nz2-outline-ai" onClick={onAI}>
+            <button
+              type="button"
+              className="nz2-outline-ai"
+              onClick={() => onToggleAiSidebar(true)}
+            >
               <Sparkles size={15} />
-              <span>Ask AI about this note</span>
+              <span>{aiSidebarOpen ? "AI Copilot Active" : "Ask AI about this note"}</span>
               <ChevronRight size={15} />
             </button>
           </aside>
         )}
+
+        {aiSidebarOpen && (
+          <NoteAISidebar
+            doc={doc}
+            documents={documents}
+            provider={provider}
+            runs={runs}
+            initialPrompt={aiInitialPrompt}
+            onRunsChange={onRunsChange}
+            onApplyProposal={onApplyProposal}
+            onBeforeAsk={onBeforeAsk}
+            onOpenDocument={onOpen}
+            onTriggerInNoteSearch={(keyword) => {
+              setFindOpen(true);
+              setFindQuery(keyword);
+              setTimeout(() => findInputRef.current?.focus(), 60);
+            }}
+            onClose={() => onToggleAiSidebar(false)}
+            onNotice={onNotice}
+          />
+        )}
       </div>
 
+      {restoreVersionId && <ConfirmationDialog title="Restore this version?" description="We’ll save a backup of your current note first, then restore the selected version." confirmLabel="Restore version" onCancel={() => setRestoreVersionId(null)} onConfirm={() => rollbackToVersion(restoreVersionId)} />}
       {!readOnly && <InlineFormatToolbar onFormatApplied={() => {}} />}
       {slash && (
         <SlashCommandMenu

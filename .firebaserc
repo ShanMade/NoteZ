@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "ai-notez"
+  },
+  "targets": {
+    "ai-notez": {
+      "hosting": {
+        "byote": [
+          "byote"
+        ]
+      }
+    }
+  }
+}
