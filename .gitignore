@@ -42,6 +42,10 @@ venv/
 .venv/
 env/
 
+# firebase hosting artifacts
+.firebase/
+firebase-debug.log
+
 # vercel
 .vercel
 
