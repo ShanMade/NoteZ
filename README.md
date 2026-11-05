@@ -1,98 +1,163 @@
 # ByNote (formerly NoteZ)
 
-A modern, distraction-free thinking workspace with rich block editing, nested pages, voice-to-note audio transcription, and semantic vector intelligence powered by Qdrant and Gemini.
+<p align="center">
+  <img src="public/logo.png" alt="ByNote Logo" width="130" />
+  <br>
+  <em>A thoughtful, distraction-free workspace for your notes, voice memos, and ideas. Write clearly, stay organized, and think alongside AI.</em>
+</p>
 
-Deployable to Firebase App Hosting / Cloud Run and Firebase Hosting (`byote.web.app`).
-
----
-
-## 🚀 Key Features
-
-- **Block-Based Canvas**: Headings, bullets, todo checklists, code, callouts, and table grids with smooth inline formatting.
-- **Intelligent Assistant (ByNote AI)**: Deep context awareness across your workspace powered by Gemini and semantic vector search.
-- **Voice Studio**: Multi-speaker chunked transcription, summary extraction, and action-item generation.
-- **Dual Vector Architecture**:
-  - Connects to hosted Qdrant instances (e.g. Qdrant Cloud) or local instances via `QDRANT_URL` and `QDRANT_API_KEY`.
-  - Transparent fallback to PostgreSQL vector math if Qdrant is unavailable.
-- **FastAPI Vector Bridge**: Dedicated Python service in `fastapi_app/` for high-performance embeddings and semantic search routing.
-- **Firebase Ready**: Pre-configured for Firebase deployment with multi-target hosting and environment secrets.
-
----
-
-## 🛠️ Environment Variables & Secrets
-
-All secrets and sensitive configurations should be provided via environment variables (or GitHub Repository Secrets & Cloud Secrets). **Never commit real keys or `.env` files to git.**
-
-### Frontend / Next.js (`.env`)
-
-| Variable | Description | Default / Example |
-| :--- | :--- | :--- |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/app_db` |
-| `GEMINI_API_KEY` | Google Gemini API key for ByNote AI | `AIza...` |
-| `GEMINI_MODEL` | Gemini model ID | `gemini-3.5-flash-lite` |
-| `QDRANT_URL` | Qdrant vector database endpoint | `https://xyz-example.qdrant.tech` or `http://localhost:6333` |
-| `QDRANT_API_KEY` | Qdrant API key (required for Qdrant Cloud) | `your-qdrant-cloud-api-key` |
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase Client API Key | Firebase Config `apiKey` |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase Auth Domain | `ai-notez.firebaseapp.com` |
-| `NEXT_PUBLIC_FIREBASE_DATABASE_URL` | Firebase Realtime DB URL | `https://ai-notez-default-rtdb.firebaseio.com` |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Project ID | `ai-notez` |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`| Firebase Storage Bucket | `ai-notez.firebasestorage.app` |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase Messaging Sender ID | `275128405663` |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase Web App ID | `1:275128405663:web:...` |
-| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | Firebase Google Analytics ID | `G-FFDFQ48X7K` |
-
-### FastAPI Backend (`fastapi_app/.env`)
-
-| Variable | Description |
-| :--- | :--- |
-| `DATABASE_URL` | Hosted PostgreSQL connection URL |
-| `QDRANT_URL` | Hosted Qdrant URL |
-| `QDRANT_API_KEY` | Qdrant Cloud API Key |
+<p align="center">
+  <a href="#-architecture-overview">Architecture</a> •
+  <a href="#-features">Features</a> •
+  <a href="#-tech-stack">Tech Stack</a> •
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-cloud-services--secrets">Cloud Services</a> •
+  <a href="#-firebase-hosting--deployment">Deployment</a> •
+  <a href="#-repository-structure">Directory Structure</a>
+</p>
 
 ---
 
-## 📦 Local Development
+## 🏗️ Architecture Overview
 
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+ByNote combines an authenticated, interactive block editor frontend (Next.js 16 + React 19) with a resilient dual-database vector engine:
 
-2. **Configure your environment**:
-   Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Database schema**:
-   ```bash
-   npx drizzle-kit push
-   ```
-
-4. **Run development server**:
-   ```bash
-   npm run dev
-   ```
-
-5. **(Optional) Run FastAPI bridge & local databases with Docker**:
-   ```bash
-   docker compose up -d
-   ```
-
----
-
-## 🌐 Firebase & Cloud Deployment
-
-### 1. Hosted Cloud Storages & Databases
-- **PostgreSQL**: Deploy using Neon.tech, Supabase, or Google Cloud SQL, and pass the connection string as `DATABASE_URL`.
-- **Qdrant Vector DB**: Deploy a managed cluster on [Qdrant Cloud](https://cloud.qdrant.io) and pass `QDRANT_URL` and `QDRANT_API_KEY`.
-- **Firebase Storage & RTDB**: Pre-configured client SDK in `src/lib/firebase.ts` connects automatically to `ai-notez.firebasestorage.app` and `https://ai-notez-default-rtdb.firebaseio.com`.
-
-### 2. Firebase Hosting (`byote.web.app`)
-To deploy via Firebase CLI:
-```bash
-firebase use ai-notez
-firebase deploy --only hosting
+```mermaid
+flowchart TD
+    User["User Browser"] --> NextApp["Next.js 16 Web App (ByNote UI)"]
+    NextApp --> LocalAPI["Next.js API Routes (/src/app/api)"]
+    
+    LocalAPI --> Supabase["Supabase PostgreSQL (aws-0-ap-northeast-2)"]
+    LocalAPI --> QdrantCloud["Qdrant Cloud Vector DB (notez_vectors)"]
+    LocalAPI --> GeminiAI["Google Gemini 3.5 Flash-Lite API"]
+    
+    FastAPIBridge["FastAPI Microservice (/fastapi_app)"] -. Optional Local RAG .-> QdrantCloud
+    FastAPIBridge -. Direct Queries .-> Supabase
+    
+    NextApp -. Deploy Target .-> FirebaseHosting["Firebase Hosting (byote.web.app)"]
 ```
 
-Or connect the GitHub repository to Firebase App Hosting / GitHub Actions for continuous automated deployment on push to `main`.
+---
+
+## ✨ Features
+
+- **Block-Based Document Canvas**:
+  - Headings (H1, H2, H3), paragraphs, to-do checklists, quote callouts, code blocks with syntax highlighting, and interactive table grids.
+  - Floating inline format toolbar (bold, italic, strikethrough, code, links).
+  - Quick slash command menu (`/` trigger) for fast block insertion and formatting.
+- **ByNote AI & RAG Search**:
+  - Intelligent context-aware workspace assistant powered by Google Gemini.
+  - Dense semantic vector search with cosine similarity via Qdrant Cloud (`notez_vectors`).
+  - Strict confidentiality filters to automatically prevent private documents from entering AI retrieval windows.
+- **Voice Studio**:
+  - High-fidelity chunked audio recording with real-time feedback.
+  - Multi-speaker transcript generation and automated synthesis into executive summaries, key decisions, and follow-up tasks.
+- **Dual Vector Architecture**:
+  - Automatically queries Qdrant Cloud when available.
+  - Transparent in-memory / relational fallback if external vector endpoints are unreachable.
+- **Adaptive Visual Theme**:
+  - Handcrafted modern UI with custom electric blue/violet accent palette (`#4f2bfb`).
+  - Flawless contrast across dark and light modes with system auto-detection and persistence.
+
+---
+
+## 💻 Tech Stack
+
+| Layer | Technologies |
+| :--- | :--- |
+| **Frontend Framework** | [Next.js 16](https://nextjs.org/) (App Router), [React 19](https://react.dev/) |
+| **Styling & Icons** | [Tailwind CSS 4](https://tailwindcss.com/), [Lucide React](https://lucide.dev/) |
+| **Primary Relational DB** | [Supabase](https://supabase.com/) PostgreSQL via [Drizzle ORM](https://orm.drizzle.team/) & `pg` connection pooler |
+| **Vector Engine** | [Qdrant Cloud](https://qdrant.tech/) REST API & `@qdrant/js-client-rest` |
+| **Artificial Intelligence**| [Google Gemini API](https://aistudio.google.com/) (`gemini-3.5-flash-lite`) |
+| **Microservice Bridge** | [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11), Uvicorn, psycopg2 |
+| **Hosting & CI/CD** | [Firebase Hosting](https://firebase.google.com/) (`byote.web.app`), GitHub Actions |
+
+---
+
+## ⚡ Quick Start
+
+### 1. Clone & Install Dependencies
+```bash
+git clone https://github.com/ShanMade/NoteZ.git
+cd NoteZ
+npm install
+```
+
+### 2. Configure Environment Variables
+Copy `.env.example` to `.env`:
+```bash
+cp .env.example .env
+```
+Populate `.env` with your Supabase pooler URL, Qdrant Cloud URL/Key, and Gemini API key.
+
+### 3. Run Schema Migrations
+```bash
+npx drizzle-kit push
+```
+
+### 4. Start Development Server
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## 🔐 Cloud Services & Secrets
+
+> [!IMPORTANT]
+> Never commit `.env` or secret keys to version control. Set them as repository secrets in GitHub and in your hosting dashboard.
+
+### Required Environment Variables
+
+| Variable | Target | Purpose |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | Server | Supabase PostgreSQL Connection Pooler URL with SSL enabled (`sslmode=require`) |
+| `GEMINI_API_KEY` | Server | Google Gemini API Key for assistant completions and voice transcription |
+| `GEMINI_MODEL` | Server | Gemini model identifier (default: `gemini-3.5-flash-lite`) |
+| `QDRANT_URL` | Server | Qdrant Cloud cluster endpoint |
+| `QDRANT_API_KEY` | Server | Qdrant Cloud API token |
+| `NEXT_PUBLIC_FIREBASE_*` | Client | Firebase client SDK parameters for project `ai-notez` |
+
+---
+
+## 🚀 Firebase Hosting & Deployment
+
+The application is configured to deploy to Firebase Hosting targeting `byote.web.app`.
+
+### Deploy using Firebase CLI
+```bash
+# Log in to Firebase
+firebase login
+
+# Set target for byote hosting site
+firebase target:apply hosting byote byote
+
+# Deploy hosting
+firebase deploy --only hosting:byote
+```
+
+### Automated GitHub Actions CI/CD
+On every push to `main`, `.github/workflows/firebase-hosting.yml` automatically triggers, builds the Next.js application with GitHub Secrets, and publishes directly to Firebase live channel.
+
+---
+
+## 📂 Repository Structure
+
+Below is an overview of the core directories in this repository. Each folder contains its own dedicated `README.md` explaining internal architecture and guidelines:
+
+```
+├── .github/workflows/      # Automated CI/CD deployment pipelines
+├── drizzle/                # Drizzle ORM SQL migration snapshots & journal
+├── fastapi_app/            # FastAPI Python microservice for vector embeddings & RAG
+├── public/                 # Static assets, ByNote logos, icons, and favicons
+└── src/
+    ├── app/                # Next.js App Router (pages, layouts, and REST APIs)
+    │   └── api/            # Serverless API routes (auth, documents, assistant, voice)
+    ├── components/         # Modular React UI components (editor, sidebar, modal dialogs)
+    ├── db/                 # Database connection pooler & Drizzle schema definitions
+    ├── hooks/              # Custom React hooks (keyboard shortcuts, focus management)
+    ├── lib/                # Core utilities (Gemini client, Qdrant client, auth, markdown)
+    └── types/              # TypeScript interfaces for blocks, documents, and AI payloads
+```
