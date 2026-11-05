@@ -373,7 +373,7 @@ export function WorkspaceSettingsPage({ user, provider, onUser, onSignOut, onNot
                   </div>
                 </div>
                 <p className="nz2-infra-desc">
-                  Run <code>docker compose up</code> to launch PostgreSQL, Qdrant, and FastAPI simultaneously. ByNote automatically connects and routes vector search and RAG queries.
+                  The optional FastAPI bridge can run alongside PostgreSQL and Qdrant. ByNote currently connects to PostgreSQL and Qdrant directly; it does not call the bridge.
                 </p>
               </div>
             </section>
