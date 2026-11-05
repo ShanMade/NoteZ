@@ -3,8 +3,18 @@ from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import psycopg2
-from psycopg2.extras import RealDictCursor
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+    USE_PSYCOPG3 = True
+except ImportError:
+    try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        USE_PSYCOPG3 = False
+    except ImportError:
+        USE_PSYCOPG3 = None
+
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
@@ -29,7 +39,11 @@ QDRANT_COLLECTION = "notez_vectors"
 VECTOR_SIZE = 128
 
 def get_db():
-    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    if USE_PSYCOPG3:
+        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+    elif USE_PSYCOPG3 is False:
+        return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    raise HTTPException(status_code=500, detail="PostgreSQL driver not installed")
 
 def get_qdrant():
     return QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=10)

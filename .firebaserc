@@ -5,8 +5,8 @@
   "targets": {
     "ai-notez": {
       "hosting": {
-        "byote": [
-          "byote"
+        "bynote": [
+          "bynote"
         ]
       }
     }

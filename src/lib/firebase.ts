@@ -1,7 +1,7 @@
 /**
  * Firebase Client SDK Initialization for ByNote
  * Connects to Firebase app: ai-notez
- * Hosting domain: byote.web.app
+ * Hosting domain: bynote.web.app
  *
  * Firebase configuration is driven by client-safe environment variables,
  * falling back to the project configuration specified in deployment instructions.

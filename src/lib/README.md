@@ -8,7 +8,7 @@ This directory houses server-side business logic, external API integrations, and
 
 - **`firebase.ts`**:
   - Initializes the Firebase Client SDK using environment variables (`NEXT_PUBLIC_FIREBASE_*`).
-  - Exports helper accessors for Authentication, Firestore, Storage, and Realtime Database targeting `ai-notez` and `byote.web.app`.
+  - Exports helper accessors for Authentication, Firestore, Storage, and Realtime Database targeting `ai-notez` and `bynote.web.app`.
 - **`qdrant.ts`**:
   - Qdrant Cloud client initialization using `QDRANT_URL` and `QDRANT_API_KEY`.
   - Implements cosine similarity search, collection bootstrapping, and fallback search algorithms.

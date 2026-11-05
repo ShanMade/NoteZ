@@ -34,7 +34,7 @@ flowchart TD
     FastAPIBridge["FastAPI Microservice (/fastapi_app)"] -. Optional Local RAG .-> QdrantCloud
     FastAPIBridge -. Direct Queries .-> Supabase
     
-    NextApp -. Deploy Target .-> FirebaseHosting["Firebase Hosting (byote.web.app)"]
+    NextApp -. Deploy Target .-> FirebaseHosting["Firebase Hosting (bynote.web.app)"]
 ```
 
 ---
@@ -71,7 +71,7 @@ flowchart TD
 | **Vector Engine** | [Qdrant Cloud](https://qdrant.tech/) REST API & `@qdrant/js-client-rest` |
 | **Artificial Intelligence**| [Google Gemini API](https://aistudio.google.com/) (`gemini-3.5-flash-lite`) |
 | **Microservice Bridge** | [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11), Uvicorn, psycopg2 |
-| **Hosting & CI/CD** | [Firebase Hosting](https://firebase.google.com/) (`byote.web.app`), GitHub Actions |
+| **Hosting & CI/CD** | [Firebase Hosting](https://firebase.google.com/) (`bynote.web.app`), GitHub Actions |
 
 ---
 
@@ -124,18 +124,18 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 🚀 Firebase Hosting & Deployment
 
-The application is configured to deploy to Firebase Hosting targeting `byote.web.app`.
+The application is configured to deploy to Firebase Hosting targeting `bynote.web.app`.
 
 ### Deploy using Firebase CLI
 ```bash
 # Log in to Firebase
 firebase login
 
-# Set target for byote hosting site
-firebase target:apply hosting byote byote
+# Set target for bynote hosting site
+firebase target:apply hosting bynote bynote
 
 # Deploy hosting
-firebase deploy --only hosting:byote
+firebase deploy --only hosting:bynote
 ```
 
 ### Automated GitHub Actions CI/CD
