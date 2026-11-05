@@ -122,6 +122,14 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
+## 🚀 Vercel Services deployment
+
+The root `vercel.json` deploys the Next.js `app` and two FastAPI services, `backend` and `fastapi_app`. All public paths, including `/api/*`, go to Next.js; those API routes already implement the application's backend. The two Python services currently contain identical bridge implementations, are private, and are not called by the application. There are no service bindings because there are no service-to-service calls. In particular, the `FASTAPI_URL` in Docker Compose is not used by the Next.js code. Do not expose the Python endpoints without adding appropriate authentication and deciding which implementation to use.
+
+Configure the environment variables above in the Vercel project for the appropriate environments. PostgreSQL and Qdrant are external dependencies, not Vercel services: use reachable hosted URLs instead of the local or Docker hostnames in the example files. Run the database migrations separately against the target database. Firebase client variables must also be present at build time.
+
+For local integration testing, install the Vercel CLI, link the project, configure its development environment and run `vercel dev` from the repository root. It runs the services together; a plain `npm run dev` only runs Next.js. Vercel bindings, if added later, are injected at runtime into the calling service's functions, not during builds or in middleware; do not manually set their injected URL variables.
+
 ## 🚀 Firebase Hosting & Deployment
 
 The application is configured to deploy to Firebase Hosting targeting `bynote.web.app`.
