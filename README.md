@@ -130,6 +130,15 @@ Configure the environment variables above in the Vercel project for the appropri
 
 For local integration testing, install the Vercel CLI, link the project, configure its development environment and run `vercel dev` from the repository root. It runs the services together; a plain `npm run dev` only runs Next.js. Vercel bindings, if added later, are injected at runtime into the calling service's functions, not during builds or in middleware; do not manually set their injected URL variables.
 
+### GitHub Actions deployment
+
+The workflow `.github/workflows/vercel-deploy.yml` deploys production on pushes to `main`. In GitHub, open **Settings → Secrets and variables → Actions → Repository secrets** and add:
+
+- `VERCEL_TOKEN`: a Vercel access token with access to the project and its team. Create one in your Vercel account settings; never commit it or share it in chat.
+- `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`: the organization/team ID and project ID for that Vercel project. To find them, run `vercel link` locally and inspect the generated `.vercel/project.json` (`orgId` and `projectId`); keep that directory untracked.
+
+These are GitHub Actions secrets, separate from the application's environment variables configured in Vercel. Repository secrets (or organization secrets available to this repository) are needed: the workflow does not select a GitHub deployment environment. After setting them, re-run the failed workflow in the GitHub Actions tab or push a new commit to `main`. An invalid token or IDs without access to the project will still prevent deployment.
+
 ## 🚀 Firebase Hosting & Deployment
 
 The application is configured to deploy to Firebase Hosting targeting `bynote.web.app`.
